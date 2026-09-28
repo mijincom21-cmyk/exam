@@ -273,7 +273,7 @@ table.cb-all .dsep{border-left:2.5px solid #000!important}
     <header class="top" id="hdr"></header>
     <nav class="tabs" id="tabs"></nav>
     <main id="view"></main>
-    <footer class="cr">정기고사 관리 시스템 · 학교 내부용</footer>
+    <footer class="cr">정기고사 관리 시스템 · 학교 내부용 · <a href="privacy.html" target="_blank" rel="noopener">개인정보 처리방침</a></footer>
   </div>
 </div>
 <div id="toast"></div>
@@ -1001,7 +1001,7 @@ function renderLogin(mode) {
       <button class="btn" data-act="login-create">+ 새 학교 만들기 (학교코드 발급)</button>`;
   }
   $('#login').innerHTML = `<div class="login">${demo}<div class="card">${body}</div>
-    <p class="tiny muted" style="text-align:center">학생 정보는 학년·반·번호·이름·수강과목·시험 배치·결시 기록만 다룹니다.</p></div>`;
+    <p class="tiny muted" style="text-align:center">학생 정보는 학년·반·번호·이름·수강과목·시험 배치·결시 기록만 다룹니다.<br><a href="privacy.html" target="_blank" rel="noopener"><b>개인정보 처리방침</b></a></p></div>`;
   const inp = $('#l-code'); if (inp) { inp.focus(); inp.addEventListener('keydown', e => { if (e.key === 'Enter') A.login(); }); }
 }
 
