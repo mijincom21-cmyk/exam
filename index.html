@@ -23,7 +23,7 @@ window.EXAM_CONFIG = {
 :root{
   --bg:#f4f6f9; --panel:#fff; --ink:#1b2430; --sub:#5b6778; --line:#dde3ea; --line2:#eef1f5;
   --pri:#1f3a5f; --pri2:#2c5282; --pri-soft:#e8eef7; --acc:#0f766e; --acc-soft:#e6f4f2;
-  --warn:#b45309; --warn-soft:#fef3e2; --bad:#c2410c; --bad-soft:#fdecea; --ok:#15803d; --ok-soft:#e8f6ec;
+  --warn:#b45309; --warn-soft:#fef3e2; --bad:#c2410c; --bad-soft:#fdecea; --ok:#15803d; --ok-soft:#e8f6ec; --th:#e8590c; --th-soft:#fff1e6;
   --r:10px; --sh:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08);
 }
 *{box-sizing:border-box}
@@ -263,6 +263,50 @@ table.cb-all .dsep{border-left:2.5px solid #000!important}
   .pg.cball table.cb-all td .c1{font-size:11px;line-height:1.12;white-space:nowrap;letter-spacing:-.3px} .pg.cball table.cb-all td .c2{font-size:10.5px;line-height:1.12}
   .pg.cball table.cb-all{font-size:12px}
 }
+/* 시험실 좌석배치표 */
+.pg.rs h1{font-size:20px;letter-spacing:4px;margin-bottom:8px}
+.rs-head{display:flex;justify-content:space-between;align-items:flex-end;font-size:13.5px;margin-bottom:6px}
+.rs-head .rs-ttl{font-size:12px;color:#444}
+.rs-room{font-size:18px}
+table.rs-t{table-layout:fixed}
+table.rs-t th,table.rs-t td{padding:2px 4px;line-height:1.3;font-size:12px}
+table.rs-t th.rs-c1{width:44px}
+table.rs-t th.rs-sj{font-size:11.5px;font-weight:700;background:#fff}
+table.rs-t td.rs-nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rs-tag{font-size:10px;color:#555}
+.rs-foot{font-size:11px;color:#444;margin-top:4px}
+.screen-pg.rs{max-width:900px}
+
+/* 통합반(통합지원반 별도 응시) 표시 */
+.th,td.th,.th-t{color:var(--th)!important;font-weight:700}
+.th-t{font-size:.82em;white-space:nowrap}
+.seat.th{background:var(--th-soft);border-color:#f4a672}
+.pg .seat.th{background:var(--th-soft)}
+.seat .sj.th-t{font-size:9.5px}
+.stu .th-t{margin-left:4px}
+table.rs-t td.th{color:var(--th);font-weight:700}
+.th-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #f4a672;background:var(--th-soft);border-radius:999px;padding:3px 6px 3px 10px;margin:3px;font-size:13px}
+.th-chip button{border:0;background:transparent;cursor:pointer;color:var(--sub);font-size:14px;padding:0 4px}
+.stu.pick-on{background:var(--th-soft);border-color:var(--th)}
+/* 급식 신청 */
+table.ml td.mc{padding:3px 4px;text-align:center}
+.mbtn{display:flex;flex-direction:column;align-items:center;gap:1px;width:100%;min-width:84px;border:1px solid var(--line);background:#fff;border-radius:8px;padding:4px 6px;cursor:pointer;font:inherit;font-size:12px;color:var(--sub)}
+.mbtn .e{font-size:11px}
+.mbtn.on{background:var(--acc-soft);border-color:var(--acc);color:var(--acc);font-weight:700}
+.mbtn.on .e{color:var(--ink);font-weight:400}
+.mbtn:disabled{opacity:.45;cursor:default}
+.eg1,.eg2{color:#7c3aed} .eg3{color:var(--acc)} .eg4{color:var(--pri2)}
+.mgrp{margin:0 0 12px}
+.mgrp h4{margin:6px 0}
+.pg.ml-p h1{font-size:19px;margin:0 0 2px;text-align:center}
+.pg.ml-p .subt{text-align:center;font-size:12.5px;margin-bottom:8px}
+.pg.ml-p .mgrp{break-inside:auto}
+.pg.ml-p h4{font-size:14px;margin:10px 0 4px;break-after:avoid}
+table.ml2{width:100%;border-collapse:collapse;table-layout:fixed}
+table.ml2 th,table.ml2 td{border:1px solid #333;padding:2px 4px;font-size:12px;text-align:center;line-height:1.35;height:6.2mm}
+table.ml2 th{background:#eee}
+table.ml2 td.gap,table.ml2 th.gap{border:0;background:transparent;width:3%}
+table.ml2 tr{break-inside:avoid}
 
 </style>
 </head>
@@ -726,13 +770,22 @@ table.cb-all .dsep{border-left:2.5px solid #000!important}
       save(db);
     },
     async list_submissions({ p_code, p_date }) { return school(load(), p_code).subs.filter(x => x.date === p_date); },
-    async purge_before({ p_code, p_token, p_date }) {
-      const db = load(), s = admin(db, p_code, p_token);
-      const a = s.absences.length, b = s.subs.length;
-      s.absences = s.absences.filter(x => x.date >= p_date); s.subs = s.subs.filter(x => x.date >= p_date); save(db);
-      return { absences: a - s.absences.length, submissions: b - s.subs.length };
+    async set_meals({ p_code, p_date, p_on, p_rows }) {
+      const db = load(), s = school(db, p_code); s.meals = s.meals || [];
+      if (!Array.isArray(p_rows) || p_rows.length > 500) throw new Error('잘못된 요청입니다');
+      const ids = new Set(p_rows.map(x => +x.sid)), before = s.meals.length;
+      s.meals = s.meals.filter(x => !(x.date === p_date && ids.has(x.sid)));
+      if (p_on) p_rows.forEach(x => s.meals.push({ date: p_date, sid: +x.sid, grade: x.grade, cls: x.cls, num: x.num, name: x.name, updated_at: now() }));
+      save(db); return p_on ? p_rows.length : before - s.meals.length;
     },
-    async clear_absences_all({ p_code, p_token }) { const db = load(), s = admin(db, p_code, p_token); s.absences = []; s.subs = []; save(db); },
+    async list_meals({ p_code, p_from, p_to }) { return (school(load(), p_code).meals || []).filter(x => x.date >= p_from && x.date <= p_to).sort((a, b) => a.date.localeCompare(b.date) || a.sid - b.sid); },
+    async purge_before({ p_code, p_token, p_date }) {
+      const db = load(), s = admin(db, p_code, p_token); s.meals = s.meals || [];
+      const a = s.absences.length, b = s.subs.length, m = s.meals.length;
+      s.absences = s.absences.filter(x => x.date >= p_date); s.subs = s.subs.filter(x => x.date >= p_date); s.meals = s.meals.filter(x => x.date >= p_date); save(db);
+      return { absences: a - s.absences.length, submissions: b - s.subs.length, meals: m - s.meals.length };
+    },
+    async clear_absences_all({ p_code, p_token }) { const db = load(), s = admin(db, p_code, p_token); s.absences = []; s.subs = []; s.meals = []; save(db); },
   };
 
   async function rpc(fn, args) {
@@ -789,9 +842,9 @@ const DEFAULT_NOTICE = '1. 개인별 수정테이프 지참\n2. 시험 시작 10
 const WD = ['일', '월', '화', '수', '목', '금', '토'];
 
 const St = {
-  code: null, name: '', token: null, docs: {}, vers: {}, memo: {}, abs: {}, subs: {},
+  code: null, name: '', token: null, docs: {}, vers: {}, memo: {}, abs: {}, subs: {}, meals: null,
   tab: 'abs', sub: 'roster', presence: 1, online: false, lastAct: Date.now(),
-  ui: { abs: { mode: 'class' }, hq: {}, seat: { tview: true, list: true }, pt: { per: 2, cls: 'all' }, tt: {}, assign: {}, tr: {}, rl: {} },
+  ui: { abs: { mode: 'class' }, hq: {}, seat: { tview: true, list: true }, pt: { per: 2, cls: 'all' }, tt: {}, assign: {}, tr: {}, rl: {}, meal: {}, th: {} },
   pending: {},
 };
 
@@ -854,6 +907,13 @@ function idx(g, k) {
   });
 }
 function stuMap(g) { return memo('sm' + g, () => new Map((GD(g)?.students || []).map(s => [s.id, s]))); }
+// 통합지원반 응시 학생 (설정 ⑧에서 지정) — 서버에 올리지 않고 '이 PC(브라우저)'에만 저장
+const thKey = () => 'exam_th_' + St.code;
+function thLoad() { try { return JSON.parse(localStorage.getItem(thKey())) || {}; } catch (e) { return {}; } }
+function thStore(o) { try { localStorage.setItem(thKey(), JSON.stringify(o)); } catch (e) { throw new Error('이 브라우저에 저장할 수 없습니다(시크릿 창이거나 저장이 막혀 있음)'); } St.memo = {}; }
+function thSet(g) { return memo('th' + g, () => new Set((thLoad()[g] || []).map(Number))); }
+const isTH = (g, sid) => thSet(g).has(+sid);
+const thMark = (g, sid) => isTH(g, sid) ? ' <span class="th-t">통합반</span>' : '';
 function stuName(g, sid) { const s = stuMap(g).get(sid); return s ? s.name : ''; }
 function slotKeysOf(g) { const a = assignOf(g); return a ? Object.keys(a.slots).sort((x, y) => { const A = Core.parseSlotKey(x), B = Core.parseSlotKey(y); return A.day - B.day || A.period - B.period; }) : []; }
 function periodsOfDay(g, day) { return slotKeysOf(g).map(Core.parseSlotKey).filter(x => x.day == day).map(x => x.period); }
@@ -957,6 +1017,7 @@ async function enterSchool(code) {
     onMsg: m => {
       if (m.t === 'doc') checkVersions();
       if (m.t === 'abs' && m.date) { delete St.abs[m.date]; if (['hq', 'abs', 'seat'].includes(St.tab)) render(); }
+      if (m.t === 'meal') { St.meals = null; if (St.tab === 'meal') render(); }
     },
     onPresence: n => { St.presence = n; hdr(); },
     onStatus: ok => { St.online = ok; hdr(); },
@@ -969,7 +1030,7 @@ async function logout(auto) {
   setToken(null);
   await Api.rtStop();
   try { sessionStorage.removeItem('exam_code'); } catch (e) { }
-  Object.assign(St, { code: null, name: '', docs: {}, vers: {}, memo: {}, abs: {}, subs: {}, tab: 'abs' });
+  Object.assign(St, { code: null, name: '', docs: {}, vers: {}, memo: {}, abs: {}, subs: {}, meals: null, tab: 'abs' });
   $('#main').classList.add('hidden'); $('#login').classList.remove('hidden');
   renderLogin();
   if (auto) toast(`${IDLE_MIN}분 동안 사용이 없어 자동 로그아웃되었습니다.`);
@@ -1001,7 +1062,7 @@ function renderLogin(mode) {
       <button class="btn" data-act="login-create">+ 새 학교 만들기 (학교코드 발급)</button>`;
   }
   $('#login').innerHTML = `<div class="login">${demo}<div class="card">${body}</div>
-    <p class="tiny muted" style="text-align:center">학생 정보는 학년·반·번호·이름·수강과목·시험 배치·결시 기록만 다룹니다.<br><a href="privacy.html" target="_blank" rel="noopener"><b>개인정보 처리방침</b></a></p></div>`;
+    <p class="tiny muted" style="text-align:center">학생 정보는 학년·반·번호·이름·수강과목·시험 배치·결시 기록·급식 신청 여부만 다룹니다.<br><a href="privacy.html" target="_blank" rel="noopener"><b>개인정보 처리방침</b></a></p></div>`;
   const inp = $('#l-code'); if (inp) { inp.focus(); inp.addEventListener('keydown', e => { if (e.key === 'Enter') A.login(); }); }
 }
 
@@ -1017,14 +1078,14 @@ function hdr() {
     ${St.token ? '<button class="btn sm adminbadge" data-act="admin-logout" title="관리자 모드 종료">관리자 모드 ✕</button>' : ''}
     <button class="btn sm" data-act="logout">로그아웃</button></div>`;
 }
-const TABS = [['abs', '결시 입력'], ['hq', '고사본부'], ['seat', '자리배치표'], ['cb', '반별 배정표'], ['pt', '개인 시간표'], ['admin', '설정(고사 담당자)']];
+const TABS = [['abs', '결시 입력'], ['meal', '급식 신청'], ['hq', '고사본부'], ['seat', '자리배치표'], ['cb', '반별 배정표'], ['pt', '개인 시간표'], ['admin', '설정(고사 담당자)']];
 function render() {
   if (!St.code) return;
   hdr();
   $('#tabs').innerHTML = TABS.map(([k, n]) => `<button class="${St.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${n}${k === 'admin' && !St.token ? '<span class="lock">🔒</span>' : ''}</button>`).join('');
   const v = $('#view');
   try {
-    ({ abs: vAbs, hq: vHq, seat: vSeat, cb: vCb, pt: vPt, admin: vAdmin })[St.tab](v);
+    ({ abs: vAbs, meal: vMeal, hq: vHq, seat: vSeat, cb: vCb, pt: vPt, admin: vAdmin })[St.tab](v);
   } catch (e) { console.error(e); v.innerHTML = `<div class="errbox">화면을 그리는 중 오류가 발생했습니다: ${esc(e.message)}</div>`; }
 }
 function needSetup(v, what) {
@@ -1094,7 +1155,7 @@ function vAbs(v) {
     <div class="stu-grid">${list.map(({ s, r }) => {
       const a = am.get(s.id), off = !r;
       const ex = off ? '하교 / 해당 없음' : `${r.subj === '자습' ? '자습' : esc(r.subj)} · ${esc(r.room)} ${r.seat ? r.seat + '번' : ''}`;
-      const lab = u.mode === 'room' ? `<span class="no">${r && r.seat ? r.seat + '번석' : ''}</span>${esc(s.name)} <span class="no">${s.cls}-${s.num}</span>` : `<span class="no">${s.num}</span>${esc(s.name)}`;
+      const lab = (u.mode === 'room' ? `<span class="no">${r && r.seat ? r.seat + '번석' : ''}</span>${esc(s.name)} <span class="no">${s.cls}-${s.num}</span>` : `<span class="no">${s.num}</span>${esc(s.name)}`) + thMark(g, s.id);
       return `<button class="stu ${a ? 'abs' : ''} ${off ? 'off' : ''} ${r && r.subj === '자습' ? 'study' : ''}" ${off ? 'disabled' : `data-act="abs-pick" data-sid="${s.id}"`}>
         <div class="nm">${lab}</div><div class="ex">${ex}</div>${a ? `<span class="rs">${esc(a.reason)}</span>` : ''}</button>`;
     }).join('') || '<p class="muted">학생이 없습니다.</p>'}</div>
@@ -1186,7 +1247,7 @@ function vHq(v) {
       const ex = a.filter(x => x[1] !== '자습'); const abn = ex.filter(x => am.has(x[0])).length;
       tgt += ex.length; ab += abn;
       const sub = subs.find(x => x.period == u.period && x.unit === 'R:' + r.room);
-      roomRows.push({ g, room: r.room, subj: r.subj, n: r.n, ex: ex.length, abn, study: a.length - ex.length, sub });
+      roomRows.push({ g, room: r.room, subj: r.subj, n: r.n, ex: ex.length, abn, study: a.length - ex.length, sub, th: ex.filter(x => isTH(g, x[0])).length });
     }
   }
   const classRows = [];
@@ -1211,6 +1272,7 @@ function vHq(v) {
     <span class="right"></span>
     <button class="btn" data-act="hq-xlsx">오늘 결시 엑셀</button>
     <button class="btn" data-act="hq-range">기간 합산 통계</button>
+    <button class="btn" data-act="go-meal">급식 신청 현황 →</button>
   </div></div>
   <div class="stats" style="margin-bottom:12px">
     <div class="stat"><div class="v">${tgt}</div><div class="k">${u.period}교시 응시 대상</div></div>
@@ -1224,7 +1286,7 @@ function vHq(v) {
   </div>
   <div class="card"><h3>${u.period}교시 시험실별 현황</h3>
     <div class="tbl-wrap"><table class="t"><thead><tr><th>시험실</th><th>학년</th><th>과목(인원)</th><th class="num">응시 대상</th><th class="num">결시</th><th class="num">실응시</th><th class="num">자습</th><th>감독 제출</th></tr></thead>
-    <tbody>${roomRows.map(r => `<tr><td><b>${esc(r.room)}</b></td><td>${r.g}</td><td>${Object.entries(r.subj).filter(([s]) => s !== '자습').map(([s, n]) => `${esc(s)}(${n})`).join(', ') || '<span class="muted">자습</span>'}</td>
+    <tbody>${roomRows.map(r => `<tr><td><b>${esc(r.room)}</b></td><td>${r.g}</td><td>${Object.entries(r.subj).filter(([s]) => s !== '자습').map(([s, n]) => `${esc(s)}(${n})`).join(', ') || '<span class="muted">자습</span>'}${r.th ? ` <span class="th-t">통합반 ${r.th}</span>` : ''}</td>
       <td class="num">${r.ex}</td><td class="num" style="color:var(--bad)">${r.abn || ''}</td><td class="num"><b>${r.ex - r.abn}</b></td><td class="num">${r.study || ''}</td><td>${r.sub ? '<span class="tag ok">제출</span>' : '<span class="muted small">-</span>'}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">이 교시에 시험실 배치가 없습니다.</td></tr>'}</tbody></table></div>
   </div>
   <div class="card"><h3>결시자 명단 (${fmtDate(date)})</h3>
@@ -1274,7 +1336,8 @@ function seatGridHtml(ctx, view, { print = false } = {}) {
     const r = sn ? ctx.bySeat.get(sn) : null;
     if (!r) return `<div class="seat none">${sn ? `<span class="sn">${sn}</span>` : ''}</div>`;
     const st = stuMap(ctx.g).get(r[0]); const a = ctx.am.get(r[0]);
-    return `<div class="seat ${r[1] === '자습' ? 'study' : ''} ${a ? 'abs' : ''}"><span class="sn">${sn}</span><span class="nm ${st && st.name.length > 7 ? 'long' : ''}">${esc(st ? st.name : '')}</span><span class="id">${r[0]}</span>${multi || r[1] === '자습' ? `<span class="sj">${esc(r[1])}</span>` : ''}${a ? `<span class="sj">결시(${esc(a.reason)})</span>` : ''}</div>`;
+    const th = isTH(ctx.g, r[0]);
+    return `<div class="seat ${r[1] === '자습' ? 'study' : ''} ${a ? 'abs' : ''} ${th ? 'th' : ''}"><span class="sn">${sn}</span><span class="nm ${st && st.name.length > 7 ? 'long' : ''}">${esc(st ? st.name : '')}</span><span class="id">${r[0]}</span>${multi || r[1] === '자습' ? `<span class="sj">${esc(r[1])}</span>` : ''}${th ? '<span class="sj th-t">통합반</span>' : ''}${a ? `<span class="sj">결시(${esc(a.reason)})</span>` : ''}</div>`;
   }).join('')).join('');
   const board = `<div class="board">${view === 'teacher' ? '교탁 · 칠판' : '칠 판'}</div>`;
   const sides = view === 'teacher' ? '<div class="sides"><span>← 복도</span><span>창가 →</span></div>' : '<div class="sides"><span>← 창가</span><span>복도 →</span></div>';
@@ -1289,14 +1352,15 @@ function seatTitle(ctx) {
 function seatPages(ctx, { tview, list }) {
   const t = esc(P().title || '정기고사');
   const ex = ctx.rows.filter(r => r[1] !== '자습').length, ab = ctx.rows.filter(r => r[1] !== '자습' && ctx.am.has(r[0])).length;
-  const sign = `<div class="sign"><span>응시 ${ex}명 · 결시 ${ab}명 · 실응시 ${ex - ab}명</span><span>정감독 ____________ (인)　부감독 ____________ (인)</span></div>`;
+  const nth = ctx.rows.filter(r => r[1] !== '자습' && isTH(ctx.g, r[0])).length;
+  const sign = `<div class="sign"><span>응시 ${ex}명 · 결시 ${ab}명 · 실응시 ${ex - ab}명${nth ? ` <span class="th-t">(통합반 ${nth}명 별도 응시 포함)</span>` : ''}</span><span>정감독 ____________ (인)　부감독 ____________ (인)</span></div>`;
   let h = `<div class="pg"><h1>${t} 자리배치표</h1><div class="subt">${seatTitle(ctx)} <span style="font-size:11px">(학생이 칠판을 바라본 방향)</span></div>${seatGridHtml(ctx, 'student', { print: true })}${sign}</div>`;
   if (tview) h += `<div class="pg"><h1>${t} 자리배치표 (교사 시선)</h1><div class="subt">${seatTitle(ctx)} <span style="font-size:11px">(교탁에서 바라본 방향 · 상하좌우 반전)</span></div>${seatGridHtml(ctx, 'teacher', { print: true })}${sign}</div>`;
   if (list) {
     const rs = [...ctx.bySeat.entries()].sort((a, b) => a[0] - b[0]);
     h += `<div class="pg"><h1>${t} 시험실 명단</h1><div class="subt">${seatTitle(ctx)}</div>
       <table class="pt roster"><thead><tr><th>좌석</th><th>학번</th><th>이름</th><th>과목</th><th>결시</th><th style="width:28%">확인</th></tr></thead><tbody>
-      ${rs.map(([sn, r]) => { const a = ctx.am.get(r[0]); return `<tr><td>${sn}</td><td>${r[0]}</td><td>${esc(stuName(ctx.g, r[0]))}</td><td>${esc(r[1])}</td><td>${a ? esc(a.reason) : ''}</td><td></td></tr>`; }).join('')}
+      ${rs.map(([sn, r]) => { const a = ctx.am.get(r[0]); return `<tr><td>${sn}</td><td>${r[0]}</td><td class="${isTH(ctx.g, r[0]) ? 'th' : ''}">${esc(stuName(ctx.g, r[0]))}${thMark(ctx.g, r[0])}</td><td>${esc(r[1])}</td><td>${a ? esc(a.reason) : ''}</td><td></td></tr>`; }).join('')}
       </tbody></table>${sign}</div>`;
   }
   return h;
@@ -1305,6 +1369,7 @@ function vSeat(v) {
   const ds = days(), gs = grades().filter(g => assignOf(g));
   if (!ds.length || !gs.length) return needSetup(v, '시험 배치가 아직 만들어지지 않았습니다.');
   const u = St.ui.seat;
+  if (u.view === 'list') return vRoomSheet(v);
   ensure(u, 'day', ds.map(d => d.day), todayDay());
   ensure(u, 'grade', gs);
   const g = +u.grade, pers = periodsOfDay(g, u.day);
@@ -1316,6 +1381,7 @@ function vSeat(v) {
   const ctx = u.room ? seatCtx(g, +u.day, +u.period, u.room) : null;
   v.innerHTML = `
   <div class="card"><div class="row" style="align-items:flex-end">
+    ${seatViewToggle()}
     <label class="f">날짜${selectHtml('seat.day', ds.map(d => [d.day, dayLabel(d.day)]), u.day)}</label>
     <label class="f">학년${selectHtml('seat.grade', gs.map(x => [x, x + '학년']), u.grade)}</label>
     <label class="f">교시${selectHtml('seat.period', pers.length ? pers.map(p => [p, `${p}교시 · ${slotSubjects(g, Core.slotKey(u.day, p)).join(', ') || '자습'}`]) : [['', '시험 없음']], u.period)}</label>
@@ -1325,6 +1391,7 @@ function vSeat(v) {
     <label class="chk"><input type="checkbox" data-bind="seat.tview" ${u.tview ? 'checked' : ''}> 교사 시선 배치표 포함</label>
     <label class="chk"><input type="checkbox" data-bind="seat.list" ${u.list ? 'checked' : ''}> 시험실 명단 포함</label>
     <span class="right"></span>
+    <label class="f">용지${selectHtml('seat.paper', paperOpts, u.paper || 'A4')}</label>
     <button class="btn pri" data-act="seat-print" ${ctx ? '' : 'disabled'}>이 시험실 인쇄</button>
     <button class="btn" data-act="seat-print-all" ${rooms.length ? '' : 'disabled'}>이 교시 전체 시험실 인쇄 (${rooms.length}실)</button>
   </div>
@@ -1332,15 +1399,19 @@ function vSeat(v) {
   ${ctx ? `<div class="row small" style="margin:-4px 0 10px"><span class="muted">${esc(u.room)} 좌석: ${layoutText(ctx.layout)}${ctx.layout.over ? ` <b style="color:var(--warn)">(이 교시 ${ctx.layout.over}명이라 자동 확장)</b>` : ''}</span>${St.token ? '<button class="btn sm" data-act="go-seats">교실 좌석 설정 →</button>' : ''}</div>` : ''}
   ${ctx ? `<div class="grid2">
     <div class="screen-pg"><h3>1쪽 · 교실 자리배치표 <span class="muted small">(칠판을 바라본 방향)</span></h3><div class="small" style="margin-bottom:8px">${seatTitle(ctx)}</div>${seatGridHtml(ctx, 'student')}
-      <div class="legend"><span><i></i>응시</span><span><i style="background:#f6f7f9"></i>자습</span><span><i style="background:var(--bad-soft)"></i>결시(자리 유지)</span></div></div>
+      <div class="legend"><span><i></i>응시</span><span><i style="background:#f6f7f9"></i>자습</span><span><i style="background:var(--bad-soft)"></i>결시(자리 유지)</span><span><i style="background:var(--th-soft);border-color:var(--th)"></i>통합반(통합지원반 별도 응시)</span></div></div>
     <div class="screen-pg"><h3>2쪽 · 교사 시선 <span class="muted small">(교탁에서 바라본 방향)</span></h3><div class="small" style="margin-bottom:8px">${seatTitle(ctx)}</div>${seatGridHtml(ctx, 'teacher')}</div>
   </div>` : '<div class="card muted">이 교시에 배치된 시험실이 없습니다.</div>'}`;
 }
 // paper: 'A4'(기본) | 'B4'(257×364mm, 국내 B4)
-function printHtml(html, paper) {
+// 용지: A4 · B4(257×364) · A3 — 기준 용지(base)로 디자인된 인쇄물을 비율에 맞게 확대/축소
+const PAPER = { A4: [210, 297, 9], B4: [257, 364, 10], A3: [297, 420, 12] };
+const paperOpts = [['A4', 'A4'], ['B4', 'B4'], ['A3', 'A3']];
+function printHtml(html, paper, base) {
+  base = base || 'A4'; paper = PAPER[paper] ? paper : base;
+  const [w, h] = PAPER[paper], z = w / PAPER[base][0], m = (PAPER[base][2] * z).toFixed(1);
   const root = $('#print-root');
-  const page = paper === 'B4' ? '<style>@page{size:257mm 364mm;margin:10mm}</style>' : '';
-  root.innerHTML = page + html;
+  root.innerHTML = `<style>@page{size:${w}mm ${h}mm;margin:${m}mm}</style><div style="zoom:${z}">${html}</div>`;
   setTimeout(() => { window.print(); }, 60);
 }
 window.addEventListener('afterprint', () => { $('#print-root').innerHTML = ''; });
@@ -1370,8 +1441,8 @@ function cbBlock(g, c, day, print) {
     <div class="cb-sums">${sumHtml}</div>
     <table class="pt cb-t"><thead><tr><th rowspan="2">번호</th><th rowspan="2">이름</th>${pers.map(p => { const pi = periodInfo(p); return `<th colspan="3">${p}교시${pi.start ? ` <span class="pt-time">${pi.start}~${pi.end || ''}</span>` : ''}</th>`; }).join('')}</tr>
       <tr>${pers.map(() => '<th>과목</th><th>시험실</th><th>좌석</th>').join('')}</tr></thead>
-    <tbody>${cells.map(({ s, r }) => `<tr><td>${s.num}</td><td class="cb-nm">${esc(s.name)}</td>${r.map(x => !x ? '<td class="cb-off"></td><td class="cb-off"></td><td class="cb-off"></td>' : `<td class="${x.subj === '자습' ? 'cb-stc' : 'cb-sj'}">${esc(x.subj)}</td><td class="${x.room !== my ? 'cb-mv' : ''}">${esc(x.room)}</td><td>${x.seat ?? ''}</td>`).join('')}</tr>`).join('')}</tbody></table>
-    <div class="cb-foot">빈칸 = 하교 · <b>굵은 시험실</b> = 본인 교실(${my})이 아닌 곳으로 이동 · 회색 = 자습</div></div>`;
+    <tbody>${cells.map(({ s, r }) => `<tr><td>${s.num}</td><td class="cb-nm ${isTH(g, s.id) ? 'th' : ''}">${esc(s.name)}</td>${r.map(x => !x ? '<td class="cb-off"></td><td class="cb-off"></td><td class="cb-off"></td>' : `<td class="${x.subj === '자습' ? 'cb-stc' : 'cb-sj'}">${esc(x.subj)}</td><td class="${x.room !== my ? 'cb-mv' : ''}">${esc(x.room)}</td><td>${x.seat ?? ''}</td>`).join('')}</tr>`).join('')}</tbody></table>
+    <div class="cb-foot">빈칸 = 하교 · <b>굵은 시험실</b> = 본인 교실(${my})이 아닌 곳으로 이동 · 회색 = 자습${thSet(g).size ? ' · <span class="th">주황 이름</span> = 통합반' : ''}</div></div>`;
 }
 // 전체 일차 한눈에: 학생 × (일차·교시) — 칸 안에 과목 / 시험실·좌석 두 줄
 function cbAllBlock(g, c, print) {
@@ -1387,10 +1458,10 @@ function cbAllBlock(g, c, print) {
     <table class="pt cb-t cb-all"><thead>
       <tr><th rowspan="2" style="width:30px">번호</th><th rowspan="2" style="width:64px">이름</th>${ds.map(({ d, pers }) => `<th colspan="${pers.length}" class="dsep">${d.day}일차 <span class="pt-time">${fmtDate(d.date, true)}</span></th>`).join('')}</tr>
       <tr>${cols.map(x => `<th class="${x.first ? 'dsep' : ''}">${x.p}교시</th>`).join('')}</tr></thead>
-    <tbody>${list.map(s => `<tr><td>${s.num}</td><td class="cb-nm">${esc(s.name)}</td>${cols.map(x => { const r = idx(g, Core.slotKey(x.day, x.p)).get(s.id), cls = x.first ? 'dsep' : '';
+    <tbody>${list.map(s => `<tr><td>${s.num}</td><td class="cb-nm ${isTH(g, s.id) ? 'th' : ''}">${esc(s.name)}</td>${cols.map(x => { const r = idx(g, Core.slotKey(x.day, x.p)).get(s.id), cls = x.first ? 'dsep' : '';
       if (!r) return `<td class="cb-off ${cls}"></td>`;
       return `<td class="${cls} ${r.subj === '자습' ? 'cb-stc' : ''}"><div class="c1">${esc(r.subj)}</div><div class="c2 ${r.room !== my ? 'cb-mv' : ''}">${esc(r.room)} · ${r.seat ?? ''}</div></td>`; }).join('')}</tr>`).join('')}</tbody></table>
-    <div class="cb-foot">칸 윗줄 = 과목, 아랫줄 = 시험실 · 좌석 · 빈칸 = 하교 · <b>굵은 시험실</b> = 본인 교실(${my})이 아닌 곳으로 이동 · 회색 = 자습</div></div>`;
+    <div class="cb-foot">칸 윗줄 = 과목, 아랫줄 = 시험실 · 좌석 · 빈칸 = 하교 · <b>굵은 시험실</b> = 본인 교실(${my})이 아닌 곳으로 이동 · 회색 = 자습${thSet(g).size ? ' · <span class="th">주황 이름</span> = 통합반' : ''}</div></div>`;
 }
 function cbDays(g) { return days().filter(d => periodsOfDay(g, d.day).length).map(d => d.day); }
 function vCb(v) {
@@ -1406,12 +1477,13 @@ function vCb(v) {
   v.innerHTML = `<div class="card"><div class="row" style="align-items:flex-end">
     <label class="f">학년${selectHtml('cb.grade', gs.map(x => [x, x + '학년']), u.grade)}</label>
     <label class="f">학급${selectHtml('cb.cls', cl.map(x => [x, x + '반']), u.cls)}</label>
+    <label class="f">용지${selectHtml('cb.paper', paperOpts, u.paper || 'B4')}</label>
     <label class="f">보기${selectHtml('cb.day', [['sum', '전체 일차 한눈에 (한 장)'], ['all', '전체 일차 (일차별 따로)'], ...ds.map(d => [d, dayLabel(d)])], u.day)}</label>
     <span class="right"></span>
     <button class="btn pri" data-act="cb-print" data-scope="cls">${g}학년 ${c}반 인쇄 (${pages}쪽)</button>
     <button class="btn" data-act="cb-print" data-scope="all">${g}학년 전체 반 인쇄</button>
     <button class="btn" data-act="cb-xlsx">엑셀 다운로드</button></div>
-    <p class="small muted" style="margin:8px 0 0">담임 선생님이 반 학생들이 교시마다 어떤 시험을 어느 시험실·좌석에서 보는지 확인하는 표입니다. <b>전체 일차 한눈에</b>는 한 반의 모든 시험 일정을 B4 한 장에, 일차별 보기는 일자마다 B4 한 장씩 인쇄합니다(인쇄 창에서 용지가 B4인지 확인하세요).</p></div>
+    <p class="small muted" style="margin:8px 0 0">담임 선생님이 반 학생들이 교시마다 어떤 시험을 어느 시험실·좌석에서 보는지 확인하는 표입니다. <b>전체 일차 한눈에</b>는 한 반의 모든 시험 일정을 B4 한 장에, 일차별 보기는 일자마다 한 장씩 인쇄합니다(인쇄 창의 용지 크기가 선택한 용지와 같은지 확인하세요).</p></div>
     ${u.day === 'sum' ? cbAllBlock(g, c, false) : (u.day === 'all' ? ds : [+u.day]).map(d => cbBlock(g, c, d, false)).join('')}`;
 }
 /* =========================================================
@@ -1446,7 +1518,8 @@ function vPt(v) {
     <label class="f">학년${selectHtml('pt.grade', gs.map(x => [x, x + '학년']), u.grade)}</label>
     <label class="f">학급${selectHtml('pt.cls', [['all', '전체'], ...cl.map(c => [c, c + '반'])], u.cls)}</label>
     <label class="f">미리보기 학생${selectHtml('pt.sid', list.map(s => [s.id, `${s.cls}-${s.num} ${s.name}`]), u.sid)}</label>
-    <label class="f">A4 한 장에${selectHtml('pt.per', [[1, '1명'], [2, '2명 (절취선)'], [3, '3명 (절취선)'], [4, '4명 (절취선)']], u.per)}</label>
+    <label class="f">용지${selectHtml('pt.paper', paperOpts, u.paper || 'A4')}</label>
+    <label class="f">한 장에${selectHtml('pt.per', [[1, '1명'], [2, '2명 (절취선)'], [3, '3명 (절취선)'], [4, '4명 (절취선)']], u.per)}</label>
     <span class="right"></span>
     <button class="btn pri" data-act="pt-print">${u.cls === 'all' ? g + '학년 전체 (반별로 나눠)' : g + '학년 ' + u.cls + '반'} 인쇄 (${list.length}명)</button></div>
     <div class="row" style="margin-top:10px"><span class="small muted" style="margin-right:4px">반별 인쇄</span>${cl.map(c => `<button class="btn sm" data-act="pt-print-cls" data-c="${c}">${c}반 <span class="muted">(${Core.active(GD(g)).filter(x => x.cls === c).length}명)</span></button>`).join('')}</div>
@@ -1503,8 +1576,8 @@ A['hq-range'] = async () => {
     });
   } catch (e) { toast(e.message, true); }
 };
-A['seat-print'] = () => { const u = St.ui.seat; printHtml(seatPages(seatCtx(+u.grade, +u.day, +u.period, u.room), u)); };
-A['seat-print-all'] = () => { const u = St.ui.seat, k = Core.slotKey(u.day, u.period); printHtml(roomsOf(+u.grade, k).map(r => seatPages(seatCtx(+u.grade, +u.day, +u.period, r.room), u)).join('')); };
+A['seat-print'] = () => { const u = St.ui.seat; printHtml(seatPages(seatCtx(+u.grade, +u.day, +u.period, u.room), u), u.paper, 'A4'); };
+A['seat-print-all'] = () => { const u = St.ui.seat, k = Core.slotKey(u.day, u.period); printHtml(roomsOf(+u.grade, k).map(r => seatPages(seatCtx(+u.grade, +u.day, +u.period, r.room), u)).join(''), u.paper, 'A4'); };
 function ptPages(g, list, per) {
   const byCls = {}; list.forEach(x => (byCls[x.cls] || (byCls[x.cls] = [])).push(x));
   let h = '';
@@ -1519,37 +1592,23 @@ function ptPages(g, list, per) {
 }
 A['pt-print'] = () => {
   const u = St.ui.pt, g = +u.grade;
-  printHtml(ptPages(g, Core.active(GD(g)).filter(x => u.cls === 'all' || x.cls == u.cls), u.per));
+  printHtml(ptPages(g, Core.active(GD(g)).filter(x => u.cls === 'all' || x.cls == u.cls), u.per), u.paper, 'A4');
 };
 A['pt-print-cls'] = b => {
   const u = St.ui.pt, g = +u.grade, c = +b.dataset.c;
-  printHtml(ptPages(g, Core.active(GD(g)).filter(x => x.cls === c), u.per));
+  printHtml(ptPages(g, Core.active(GD(g)).filter(x => x.cls === c), u.per), u.paper, 'A4');
 };
 A['go-seats'] = () => { St.tab = 'admin'; St.sub = 'seats'; render(); };
+A['go-meal'] = () => { St.tab = 'meal'; St.ui.meal.mode = 'hq'; St.ui.meal.day = St.ui.hq.day; render(); };
 
 A['cb-print'] = b => {
   const u = St.ui.cb, g = +u.grade, ds = cbDays(g);
   const cls = b.dataset.scope === 'all' ? classesOf(g) : [+u.cls];
   const html = u.day === 'sum' ? cls.map(c => cbAllBlock(g, c, true)).join('')
     : cls.flatMap(c => (u.day === 'all' ? ds : [+u.day]).map(d => cbBlock(g, c, d, true))).join('');
-  printHtml(html, 'B4');
+  printHtml(html, u.paper || 'B4', 'B4');
 };
-A['cb-xlsx'] = () => {
-  const u = St.ui.cb, g = +u.grade, ds = cbDays(g), sheets = {};
-  // 전체 일차 시트
-  const cols = ds.flatMap(d => periodsOfDay(g, d).map(p => ({ d, p })));
-  const all = [['학번', '반', '번호', '이름', ...cols.flatMap(x => [`${x.d}일차 ${x.p}교시 과목`, '시험실', '좌석'])]];
-  for (const c of classesOf(g)) for (const s of Core.active(GD(g)).filter(x => x.cls === c).sort((a, b) => a.num - b.num))
-    all.push([s.id, s.cls, s.num, s.name, ...cols.flatMap(x => { const r = idx(g, Core.slotKey(x.d, x.p)).get(s.id); return r ? [r.subj, r.room, r.seat ?? ''] : ['', '', '']; })]);
-  sheets['전체일차'] = all;
-  for (const d of ds) {
-    const pers = periodsOfDay(g, d);
-    const aoa = [[`${d}일차`, fmtDate(dateOf(d))], [], ['학번', '반', '번호', '이름', ...pers.flatMap(p => [p + '교시 과목', '시험실', '좌석'])]];
-    for (const c of classesOf(g)) for (const { s, r } of cbData(g, c, d).cells) aoa.push([s.id, s.cls, s.num, s.name, ...r.flatMap(x => x ? [x.subj, x.room, x.seat ?? ''] : ['', '', ''])]);
-    sheets[`${d}일차`] = aoa;
-  }
-  xlsxDownload(`${g}학년_반별시험실배정.xlsx`, sheets);
-};
+// A['cb-xlsx'] → app3.js (서식 있는 엑셀)
 
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-act]');
@@ -1622,7 +1681,7 @@ function sortedSlotKeys(obj) { return Object.keys(obj || {}).sort((x, y) => { co
 /* =========================================================
    설정 탭 진입
    ========================================================= */
-const SUBS = [['roster', '① 학생 편성'], ['plan', '② 고사 일정'], ['tt', '③ 고사 시간표 (파일 없는 학년용)'], ['elist', '④ 응시자 명단'], ['assign', '⑤ 시험시간표 파일 업로드'], ['seats', '⑥ 교실 좌석'], ['transfer', '⑦ 전입·전출'], ['manage', '⑧ 관리']];
+const SUBS = [['roster', '① 학생 편성'], ['plan', '② 고사 일정'], ['tt', '③ 고사 시간표 (파일 없는 학년용)'], ['elist', '④ 응시자 명단'], ['assign', '⑤ 시험시간표 파일 업로드'], ['seats', '⑥ 교실 좌석'], ['transfer', '⑦ 전입·전출'], ['special', '⑧ 통합지원반'], ['manage', '⑨ 관리']];
 function vAdmin(v) {
   if (!St.token) {
     v.innerHTML = `<div class="card" style="max-width:460px;margin:30px auto">
@@ -1635,7 +1694,7 @@ function vAdmin(v) {
   }
   v.innerHTML = `<nav class="sub">${SUBS.map(([k, n]) => `<button class="${St.sub === k ? 'on' : ''}" data-act="sub" data-v="${k}">${n}</button>`).join('')}</nav><div id="subv"></div>`;
   const sv = $('#subv');
-  ({ roster: sRoster, plan: sPlan, tt: sTT, elist: sElist, assign: sAssign, seats: sSeats, transfer: sTransfer, manage: sManage })[St.sub](sv);
+  ({ roster: sRoster, plan: sPlan, tt: sTT, elist: sElist, assign: sAssign, seats: sSeats, transfer: sTransfer, special: sSpecial, manage: sManage })[St.sub](sv);
 }
 A.sub = b => { St.sub = b.dataset.v; render(); };
 A['admin-login'] = async () => {
@@ -2227,7 +2286,7 @@ A['tr-undo'] = async b => {
 };
 
 /* =========================================================
-   ⑧ 관리
+   ⑨ 관리
    ========================================================= */
 function sManage(v) {
   v.innerHTML = `<div class="grid2">
@@ -2236,12 +2295,12 @@ function sManage(v) {
   <div class="card"><h3>관리자 비밀번호 변경</h3><div class="col">
     <input type="password" id="pw-old" placeholder="현재 비밀번호"><input type="password" id="pw-new" placeholder="새 비밀번호 (6자 이상)"><input type="password" id="pw-new2" placeholder="새 비밀번호 확인">
     <button class="btn pri" data-act="pw-change">변경</button><p class="small muted" style="margin:0">변경하면 다른 기기의 관리자 로그인은 모두 해제됩니다.</p></div></div>
-  <div class="card"><h3>결시 기록 정리</h3><p class="small muted">기준 날짜 <b>이전</b>의 결시·제출 기록을 완전히 삭제합니다(되돌릴 수 없음). 명단·시간표·배치는 영향 없습니다.</p>
+  <div class="card"><h3>결시·급식 기록 정리</h3><p class="small muted">기준 날짜 <b>이전</b>의 결시·제출·급식 신청 기록을 완전히 삭제합니다(되돌릴 수 없음). 명단·시간표·배치는 영향 없습니다.</p>
     <div class="row"><input type="date" id="purge-d" value="${todayIso()}"><button class="btn bad" data-act="purge">이 날짜 이전 기록 삭제</button></div></div>
   <div class="card"><h3>백업 · 복원</h3><p class="small muted">설정 데이터(명단·시간표·배치·일정)를 JSON 파일로 내려받거나 되살립니다. 결시 기록은 고사본부 엑셀로 보관하세요.</p>
     <div class="row"><button class="btn" data-act="backup">백업 파일 내려받기</button><button class="btn" data-act="restore">백업 파일로 복원</button></div></div>
   <div class="card"><h3>새 시험 준비</h3><p class="small muted">다음 정기고사를 준비할 때 사용합니다. 고사 일정·시간표·시험 배치를 비우고(명단은 유지), 원하면 결시 기록도 모두 지웁니다.</p>
-    <label class="chk"><input type="checkbox" id="reset-abs"> 결시·제출 기록도 모두 삭제</label><div class="sp"></div>
+    <label class="chk"><input type="checkbox" id="reset-abs"> 결시·제출·급식 신청 기록도 모두 삭제</label><div class="sp"></div>
     <button class="btn bad" data-act="reset-exam">고사 일정·시간표·배치 초기화</button></div>
   </div>`;
 }
@@ -2252,7 +2311,7 @@ A['pw-change'] = async () => {
 A.purge = async () => {
   const d = $('#purge-d').value; if (!d) return;
   if (!await confirmBox(`${d} 이전의 결시·제출 기록을 모두 삭제할까요?`, { danger: true, ok: '삭제' })) return;
-  try { const r = await rpc('purge_before', { p_token: St.token, p_date: d }); St.abs = {}; St.subs = {}; toast(`결시 ${r.absences}건 · 제출 ${r.submissions}건 삭제`); } catch (e) { toast(e.message, true); }
+  try { const r = await rpc('purge_before', { p_token: St.token, p_date: d }); St.abs = {}; St.subs = {}; St.meals = null; toast(`결시 ${r.absences}건 · 제출 ${r.submissions}건 · 급식 ${r.meals ?? 0}건 삭제`); } catch (e) { toast(e.message, true); }
 };
 A.backup = () => {
   const blob = new Blob([JSON.stringify({ app: 'exam-manager', v: 1, school: St.name, at: nowIso(), docs: St.docs })], { type: 'application/json' });
@@ -2277,7 +2336,7 @@ A['reset-exam'] = async () => {
     await busy('초기화 중', async () => {
       for (const k of Object.keys(St.docs)) if (k.startsWith('assign:')) await deleteDoc(k);
       const pl = clone(P()); pl.days = []; pl.slots = {}; pl.title = ''; await saveDoc('plan', pl);
-      if (withAbs) { await rpc('clear_absences_all', { p_token: St.token }); St.abs = {}; St.subs = {}; }
+      if (withAbs) { await rpc('clear_absences_all', { p_token: St.token }); St.abs = {}; St.subs = {}; St.meals = null; }
     });
     St.ui.planDraft = null; St.ui.tt.drafts = {}; toast('초기화했습니다'); render();
   } catch (e) { toast(e.message, true); }
@@ -2287,11 +2346,596 @@ A['reset-exam'] = async () => {
 window.BIND_HOOKS = {
   'tr.inCls': () => { }, 'pt.grade': () => { St.ui.pt.cls = 'all'; St.ui.pt.sid = null; }, 'pt.cls': () => { St.ui.pt.sid = null; },
 };
-(async function boot() {
+// 모든 스크립트(app3·app4 포함)가 읽힌 뒤 시작
+async function boot() {
   renderLogin();
   let c = null; try { c = sessionStorage.getItem('exam_code'); } catch (e) { }
   if (c) { try { await enterSchool(c); } catch (e) { renderLogin(); } }
-})();
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else setTimeout(boot, 0);
+
+</script>
+<script>
+/* ===== app3.js : 시험실 좌석배치표 · 서식 있는 엑셀(ExcelJS) ===== */
+'use strict';
+
+/* ---------- 공통: ExcelJS 불러오기 / 서식 도우미 ---------- */
+let _xlp = null;
+function loadExcelJS() {
+  if (window.ExcelJS) return Promise.resolve();
+  if (_xlp) return _xlp;
+  _xlp = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+    s.onload = () => res();
+    s.onerror = () => { _xlp = null; rej(new Error('엑셀 모듈을 불러오지 못했습니다. 인터넷 연결을 확인하세요.')); };
+    document.head.appendChild(s);
+  });
+  return _xlp;
+}
+const XL_PAPER = { A4: 9, B4: 12, A3: 8 };
+const XL_TH = 'FFE8590C';   // 통합반 주황
+const XB = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+function xc(ws, r, c, v, st = {}) {
+  const cell = ws.getCell(r, c);
+  cell.value = v;
+  if (!st.noBorder) cell.border = XB;
+  cell.alignment = { vertical: 'middle', horizontal: st.h || 'center', wrapText: true };
+  const font = { name: '맑은 고딕', size: st.size || 10, bold: !!st.bold };
+  if (st.color) font.color = { argb: st.color };
+  cell.font = font;
+  if (st.fill) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: st.fill } };
+  return cell;
+}
+function xm(ws, r1, c1, r2, c2, v, st = {}) {
+  if (r1 !== r2 || c1 !== c2) ws.mergeCells(r1, c1, r2, c2);
+  xc(ws, r1, c1, v, st);
+  if (!st.noBorder) for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) ws.getCell(r, c).border = XB;
+}
+function xlSetup(ws, paper, landscape) {
+  ws.pageSetup = {
+    paperSize: XL_PAPER[paper] || 9, orientation: landscape ? 'landscape' : 'portrait',
+    fitToPage: true, fitToWidth: 1, fitToHeight: 0, horizontalCentered: true,
+    margins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 },
+  };
+}
+const xlSheetName = s => String(s).replace(/[\\/?*[\]:]/g, ' ').slice(0, 31);
+async function xlSave(wb, name) {
+  const buf = await wb.xlsx.writeBuffer();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+async function withExcel(label, fn) {
+  try { await busy(label, async () => { await loadExcelJS(); await fn(); }); }
+  catch (e) { console.error(e); toast(e.message || '엑셀 만들기에 실패했습니다', true); }
+}
+
+/* =========================================================
+   시험실 좌석배치표 (일차 · 시험실별: 좌석번호 × 교시 → 학번·이름)
+   ========================================================= */
+function seatViewToggle() {
+  return `<label class="f">보기${selectHtml('seat.view', [['map', '자리배치도 (교실 모양)'], ['list', '시험실 좌석배치표 (교시별 명단)']], St.ui.seat.view || 'map')}</label>`;
+}
+function roomsOfDay(g, day) {
+  const set = new Set();
+  periodsOfDay(g, day).forEach(p => roomsOf(g, Core.slotKey(day, p)).forEach(r => set.add(r.room)));
+  return [...set].sort(natCmp);
+}
+function sheetPeriods(g, day) {
+  const pmax = Math.max((P().periods || []).length, ...periodsOfDay(g, day), 1);
+  return Array.from({ length: pmax }, (_, i) => i + 1);
+}
+function roomSheetData(g, day, room) {
+  const a = assignOf(g), pers = sheetPeriods(g, day);
+  const cols = pers.map(p => {
+    const sl = a && a.slots[Core.slotKey(day, p)];
+    const rows = sl ? sl.rows.filter(r => r[2] === room) : [];
+    const bySeat = new Map(); let extra = Math.max(0, ...rows.map(r => r[3] || 0));
+    rows.forEach(r => bySeat.set(r[3] || ++extra, r));
+    const cnt = {}; rows.forEach(r => cnt[r[1]] = (cnt[r[1]] || 0) + 1);
+    const subs = Object.entries(cnt).sort((x, y) => (x[0] === '자습') - (y[0] === '자습') || y[1] - x[1]);
+    const text = subs.map(([s, n]) => subs.length > 1 ? `${s}(${n})` : s).join(' / ');
+    const th = rows.filter(r => r[1] !== '자습' && isTH(g, r[0])).length;
+    return { p, rows, bySeat, subs, main: subs.length ? subs[0][0] : null, text, n: rows.length, th };
+  });
+  const maxSeat = Math.max(0, ...cols.flatMap(c => [...c.bySeat.keys()]));
+  const nRows = Math.max(maxSeat, layoutFor(room).seats || 0, 1);
+  return { pers, cols, nRows };
+}
+function roomSheetBlock(g, day, room, print) {
+  const { cols, nRows } = roomSheetData(g, day, room), t = esc(P().title || '정기고사');
+  const name = sid => esc(stuName(g, sid));
+  const body = Array.from({ length: nRows }, (_, i) => {
+    const sn = i + 1;
+    return `<tr><td>${sn}</td>${cols.map(c => {
+      const r = c.bySeat.get(sn); if (!r) return '<td></td><td></td>';
+      const tag = c.subs.length > 1 && r[1] !== c.main ? ` <small class="rs-tag">(${esc(r[1])})</small>` : '';
+      const th = isTH(g, r[0]) ? ' th' : '';
+      return `<td class="${th}">${r[0]}</td><td class="rs-nm${th}">${name(r[0])}${tag}</td>`;
+    }).join('')}</tr>`;
+  }).join('');
+  return `<div class="${print ? 'pg rs' : 'screen-pg pg rs'}">
+    <h1>시험실 좌석배치표</h1>
+    <div class="rs-head"><span><b>${day}일차</b> ${fmtDate(dateOf(day))}</span><span class="rs-ttl">${t}</span><span>시험실 <b class="rs-room">${esc(room)}</b></span></div>
+    <table class="pt rs-t"><thead>
+      <tr><th class="rs-c1">교시</th>${cols.map(c => `<th colspan="2">${c.p}교시</th>`).join('')}</tr>
+      <tr><th>과목</th>${cols.map(c => `<th colspan="2" class="rs-sj">${esc(c.text)}${c.th ? `<span class="th">(통합${c.th})</span>` : ''}</th>`).join('')}</tr>
+      <tr><th>좌석</th>${cols.map(() => '<th>학번</th><th>이름</th>').join('')}</tr></thead>
+    <tbody>${body}</tbody></table>
+    <div class="rs-foot">인원: ${cols.map(c => `${c.p}교시 ${c.n}명`).join(' · ')}${cols.some(c => c.th) ? ' · <span class="th">주황색 = 통합반</span>(통합지원반에서 별도 응시 · 출석 확인용으로 표시)' : ''}</div></div>`;
+}
+function vRoomSheet(v) {
+  const ds = days(), gs = grades().filter(g => assignOf(g)), u = St.ui.seat;
+  ensure(u, 'day', ds.map(d => d.day), todayDay());
+  ensure(u, 'grade', gs);
+  const g = +u.grade, rooms = roomsOfDay(g, +u.day);
+  ensure(u, 'rsRoom', rooms);
+  v.innerHTML = `<div class="card"><div class="row" style="align-items:flex-end">
+      ${seatViewToggle()}
+      <label class="f">날짜${selectHtml('seat.day', ds.map(d => [d.day, dayLabel(d.day)]), u.day)}</label>
+      <label class="f">학년${selectHtml('seat.grade', gs.map(x => [x, x + '학년']), u.grade)}</label>
+      <label class="f">시험실${selectHtml('seat.rsRoom', rooms.length ? rooms.map(r => [r, r]) : [['', '-']], u.rsRoom)}</label>
+      <span class="right"></span>
+      <label class="f">용지${selectHtml('seat.paper', paperOpts, u.paper || 'A4')}</label>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn pri" data-act="rs-print" data-scope="room" ${u.rsRoom ? '' : 'disabled'}>이 시험실 인쇄</button>
+      <button class="btn" data-act="rs-print" data-scope="day" ${rooms.length ? '' : 'disabled'}>이 날 전체 시험실 인쇄 (${rooms.length}실)</button>
+      <button class="btn" data-act="rs-xlsx">엑셀 다운로드 (${g}학년 전체 일차)</button>
+    </div>
+    <p class="small muted" style="margin:8px 0 0">시험실마다 그날 교시별로 좌석번호에 앉는 학생(학번·이름)을 한 장에 정리한 표입니다. 한 교시에 과목이 둘 이상이면 과목명 옆에 인원이, 적은 쪽 학생 이름 옆에 과목이 표시됩니다.</p></div>
+    ${u.rsRoom ? roomSheetBlock(g, +u.day, u.rsRoom, false) : '<div class="card muted">이 날 배치된 시험실이 없습니다.</div>'}`;
+}
+A['rs-print'] = b => {
+  const u = St.ui.seat, g = +u.grade, day = +u.day;
+  const rooms = b.dataset.scope === 'day' ? roomsOfDay(g, day) : [u.rsRoom];
+  printHtml(rooms.map(r => roomSheetBlock(g, day, r, true)).join(''), u.paper, 'A4');
+};
+A['rs-xlsx'] = () => withExcel('엑셀 만드는 중', async () => {
+  const u = St.ui.seat, g = +u.grade, paper = u.paper || 'A4';
+  const wb = new ExcelJS.Workbook();
+  for (const d of days().filter(x => periodsOfDay(g, x.day).length)) {
+    const ws = wb.addWorksheet(xlSheetName(`${d.day}일차`));
+    const pers = sheetPeriods(g, d.day), nc = 1 + pers.length * 2;
+    ws.columns = [{ width: 7 }, ...pers.flatMap(() => [{ width: 9 }, { width: 13 }])];
+    xlSetup(ws, paper, false);
+    let r = 1;
+    for (const room of roomsOfDay(g, d.day)) {
+      const { cols, nRows } = roomSheetData(g, d.day, room);
+      xm(ws, r, 1, r, nc, '시험실 좌석배치표', { bold: true, size: 16, noBorder: true }); ws.getRow(r).height = 28; r += 2;
+      xc(ws, r, 1, `${d.day}일차`, { bold: true, noBorder: true });
+      xm(ws, r, 2, r, 3, fmtDate(d.date), { noBorder: true, h: 'left' });
+      xc(ws, r, nc - 1, '시험실', { bold: true, noBorder: true, h: 'right' });
+      xc(ws, r, nc, room, { bold: true, size: 13, noBorder: true });
+      r += 2;
+      xc(ws, r, 1, '교시', { bold: true, fill: 'FFEEEEEE' });
+      cols.forEach((c, i) => xm(ws, r, 2 + i * 2, r, 3 + i * 2, `${c.p}교시`, { bold: true, fill: 'FFEEEEEE' }));
+      r++;
+      xc(ws, r, 1, '과목', { bold: true, fill: 'FFEEEEEE' });
+      cols.forEach((c, i) => {
+        xm(ws, r, 2 + i * 2, r, 3 + i * 2, c.text, { bold: true });
+        if (c.th) ws.getCell(r, 2 + i * 2).value = { richText: [{ text: c.text, font: { name: '맑은 고딕', size: 10, bold: true } }, { text: `(통합${c.th})`, font: { name: '맑은 고딕', size: 10, bold: true, color: { argb: XL_TH } } }] };
+      });
+      ws.getRow(r).height = 30; r++;
+      xc(ws, r, 1, '좌석번호', { bold: true, fill: 'FFEEEEEE', size: 9 });
+      cols.forEach((c, i) => { xc(ws, r, 2 + i * 2, '학번', { bold: true, fill: 'FFEEEEEE' }); xc(ws, r, 3 + i * 2, '이름', { bold: true, fill: 'FFEEEEEE' }); });
+      r++;
+      for (let sn = 1; sn <= nRows; sn++, r++) {
+        xc(ws, r, 1, sn);
+        cols.forEach((c, i) => {
+          const x = c.bySeat.get(sn);
+          const tag = x && c.subs.length > 1 && x[1] !== c.main ? ` (${x[1]})` : '';
+          const th = x && isTH(g, x[0]) ? { bold: true, color: XL_TH } : {};
+          xc(ws, r, 2 + i * 2, x ? x[0] : '', th);
+          xc(ws, r, 3 + i * 2, x ? stuName(g, x[0]) + tag : '', Object.assign({ size: tag ? 9 : 10 }, th));
+        });
+      }
+      xm(ws, r, 1, r, nc, `인원: ${cols.map(c => `${c.p}교시 ${c.n}명`).join(' · ')}${cols.some(c => c.th) ? ' · 주황색 = 통합반(통합지원반에서 별도 응시)' : ''}`, { noBorder: true, h: 'left', size: 9 });
+      ws.getRow(r).addPageBreak();
+      r += 2;
+    }
+  }
+  await xlSave(wb, `${g}학년_시험실좌석배치표.xlsx`);
+});
+
+/* =========================================================
+   반별 배정표 엑셀 (화면 형태 그대로)
+   ========================================================= */
+function xlCbAll(ws, g, c, paper) {
+  const my = `${g}-${c}`;
+  const ds = cbDays(g).map(d => ({ d, pers: periodsOfDay(g, d) }));
+  const cols = ds.flatMap(({ d, pers }) => pers.map((p, i) => ({ day: d, p, first: i === 0 })));
+  const list = Core.active(GD(g)).filter(x => x.cls === c).sort((a, b) => a.num - b.num);
+  const nc = 2 + cols.length;
+  ws.columns = [{ width: 5 }, { width: 11 }, ...cols.map(() => ({ width: 14 }))];
+  xlSetup(ws, paper, false);
+  let r = 1;
+  xm(ws, r, 1, r, nc, `${P().title || '정기고사'}  반별 시험실 배정 현황 (전체 일차)`, { bold: true, size: 14, noBorder: true, h: 'left' }); r++;
+  xm(ws, r, 1, r, nc, `${g}학년 ${c}반 (${list.length}명)`, { bold: true, size: 12, noBorder: true, h: 'right' }); r++;
+  for (const { d } of ds) {
+    const { sum } = cbData(g, c, d);
+    const t = `${d}일차  ` + sum.map(x => `${x.p}교시: ` + Object.entries(x.by).sort((a, b) => (a[0] === '자습') - (b[0] === '자습') || b[1].n - a[1].n).map(([k, v]) => `${k} ${v.n}`).join(', ') + (x.home ? `, 하교 ${x.home}` : '')).join('   ');
+    xm(ws, r, 1, r, nc, t, { noBorder: true, h: 'left', size: 9 }); r++;
+  }
+  r++;
+  xm(ws, r, 1, r + 1, 1, '번호', { bold: true, fill: 'FFEEEEEE' });
+  xm(ws, r, 2, r + 1, 2, '이름', { bold: true, fill: 'FFEEEEEE' });
+  let ci = 3;
+  for (const { d, pers } of ds) { xm(ws, r, ci, r, ci + pers.length - 1, `${d}일차 ${fmtDate(dateOf(d), true)}`, { bold: true, fill: 'FFEEEEEE' }); ci += pers.length; }
+  cols.forEach((x, i) => xc(ws, r + 1, 3 + i, `${x.p}교시`, { bold: true, fill: 'FFEEEEEE' }));
+  r += 2;
+  for (const s of list) {
+    xc(ws, r, 1, s.num); xc(ws, r, 2, s.name, isTH(g, s.id) ? { bold: true, color: XL_TH } : {});
+    cols.forEach((x, i) => {
+      const it = idx(g, Core.slotKey(x.day, x.p)).get(s.id);
+      if (!it) { xc(ws, r, 3 + i, ''); return; }
+      const study = it.subj === '자습', moved = it.room !== my;
+      const cell = xc(ws, r, 3 + i, '', { size: 9, fill: study ? 'FFF3F3F3' : undefined });
+      cell.value = { richText: [
+        { text: it.subj + '\n', font: { name: '맑은 고딕', size: 9, bold: !study, color: { argb: study ? 'FF808080' : 'FF000000' } } },
+        { text: `${it.room} · ${it.seat ?? ''}`, font: { name: '맑은 고딕', size: 9, bold: moved, color: { argb: 'FF333333' } } },
+      ] };
+    });
+    ws.getRow(r).height = 28; r++;
+  }
+  xm(ws, r, 1, r, nc, `칸 윗줄 = 과목, 아랫줄 = 시험실 · 좌석 · 빈칸 = 하교 · 굵은 시험실 = 본인 교실(${my})이 아닌 곳으로 이동 · 회색 = 자습`, { noBorder: true, h: 'left', size: 8 });
+  ws.views = [{ state: 'frozen', xSplit: 2, ySplit: r - list.length - 1 }];
+}
+function xlCbDay(ws, g, c, day, r) {
+  const { pers, cells, sum } = cbData(g, c, day), my = `${g}-${c}`, nc = 2 + pers.length * 3;
+  xm(ws, r, 1, r, nc, `${P().title || '정기고사'}  반별 시험실 배정 현황`, { bold: true, size: 14, noBorder: true, h: 'left' }); r++;
+  xm(ws, r, 1, r, nc, `${g}학년 ${c}반 · ${day}일차 ${fmtDate(dateOf(day))}`, { bold: true, size: 12, noBorder: true, h: 'right' }); r++;
+  for (const x of sum) {
+    const t = `${x.p}교시  ` + Object.entries(x.by).sort((a, b) => (a[0] === '자습') - (b[0] === '자습') || b[1].n - a[1].n).map(([k, v]) => `${k} ${v.n}명(${Object.keys(v.rooms).sort(natCmp).join(', ')})`).join(' · ') + (x.home ? ` · 하교 ${x.home}명` : '');
+    xm(ws, r, 1, r, nc, t, { noBorder: true, h: 'left', size: 9 }); r++;
+  }
+  r++;
+  xm(ws, r, 1, r + 1, 1, '번호', { bold: true, fill: 'FFEEEEEE' });
+  xm(ws, r, 2, r + 1, 2, '이름', { bold: true, fill: 'FFEEEEEE' });
+  pers.forEach((p, i) => {
+    const pi = periodInfo(p);
+    xm(ws, r, 3 + i * 3, r, 5 + i * 3, `${p}교시${pi.start ? ` ${pi.start}~${pi.end || ''}` : ''}`, { bold: true, fill: 'FFEEEEEE' });
+    ['과목', '시험실', '좌석'].forEach((h, k) => xc(ws, r + 1, 3 + i * 3 + k, h, { bold: true, fill: 'FFEEEEEE' }));
+  });
+  r += 2;
+  for (const { s, r: row } of cells) {
+    xc(ws, r, 1, s.num); xc(ws, r, 2, s.name, isTH(g, s.id) ? { bold: true, color: XL_TH } : {});
+    row.forEach((x, i) => {
+      const study = x && x.subj === '자습';
+      const st = study ? { color: 'FF808080', fill: 'FFF3F3F3' } : {};
+      xc(ws, r, 3 + i * 3, x ? x.subj : '', st);
+      xc(ws, r, 4 + i * 3, x ? x.room : '', Object.assign({}, st, { bold: !!x && x.room !== my }));
+      xc(ws, r, 5 + i * 3, x ? (x.seat ?? '') : '', st);
+    });
+    r++;
+  }
+  xm(ws, r, 1, r, nc, `빈칸 = 하교 · 굵은 시험실 = 본인 교실(${my})이 아닌 곳으로 이동 · 회색 = 자습`, { noBorder: true, h: 'left', size: 8 });
+  ws.getRow(r).addPageBreak();
+  return r + 2;
+}
+A['cb-xlsx'] = () => withExcel('엑셀 만드는 중', async () => {
+  const u = St.ui.cb, g = +u.grade, paper = u.paper || 'B4', ds = cbDays(g);
+  const wb = new ExcelJS.Workbook();
+  for (const c of classesOf(g)) {
+    const ws = wb.addWorksheet(xlSheetName(`${c}반`));
+    if (u.day === 'sum') xlCbAll(ws, g, c, paper);
+    else {
+      const dsel = u.day === 'all' ? ds : [+u.day], np = Math.max(1, ...dsel.map(d => periodsOfDay(g, d).length));
+      ws.columns = [{ width: 5 }, { width: 11 }, ...Array.from({ length: np }, () => [{ width: 16 }, { width: 7 }, { width: 5 }]).flat()];
+      xlSetup(ws, paper, false);
+      let r = 1; for (const d of dsel) r = xlCbDay(ws, g, c, d, r);
+    }
+  }
+  const tag = u.day === 'sum' ? '전체일차' : u.day === 'all' ? '일차별' : `${u.day}일차`;
+  await xlSave(wb, `${g}학년_반별시험실배정_${tag}.xlsx`);
+});
+
+</script>
+<script>
+/* ===== app4.js : 통합지원반 지정 · 급식 신청(담임) · 급식 현황/시청각실 출석부(고사본부) ===== */
+'use strict';
+
+/* =========================================================
+   ⑧ 통합지원반 (고사 담당자만) — 명단은 서버에 올리지 않고 이 PC의 브라우저에만 저장
+   ========================================================= */
+async function saveTH(g, ids) {
+  const d = thLoad();
+  const list = [...new Set(ids.map(Number))].sort((a, b) => a - b);
+  if (list.length) d[g] = list; else delete d[g];
+  thStore(d);
+}
+function sSpecial(v) {
+  const gs = grades(); if (!gs.length) return (v.innerHTML = '<div class="card muted">먼저 ① 학생 편성을 등록하세요.</div>');
+  const u = St.ui.th; ensure(u, 'g', gs.map(String)); const g = +u.g, cl = classesOf(g); ensure(u, 'cls', cl.map(String));
+  const set = thSet(g), sm = stuMap(g);
+  const cur = [...set].sort((a, b) => a - b).map(id => sm.get(id) || { id, name: '(명단에 없음)', cls: Math.floor(id / 100) % 100, num: id % 100, gone: true });
+  const list = Core.active(GD(g)).filter(s => s.cls == u.cls).sort((a, b) => a.num - b.num);
+  v.innerHTML = `<div class="card"><div class="row"><h3 style="margin:0">통합지원반 응시 학생</h3>${gs.map(x => `<button class="btn sm ${x === g ? 'pri' : ''}" data-act="th-g" data-g="${x}">${x}학년 <span class="muted">(${thSet(x).size})</span></button>`).join('')}</div>
+    <div class="okbox" style="margin-top:10px">🔒 이 명단은 <b>서버에 올라가지 않고 지금 쓰는 이 PC(이 브라우저)에만 저장</b>됩니다. 그래서 <b>이 PC에서 보거나 인쇄할 때만</b> 통합반 표시가 나오고, 다른 선생님 화면에는 나오지 않습니다.
+      <ul class="small" style="margin:6px 0 0;padding-left:18px"><li>좌석배치표·자리배치표는 이 PC에서 인쇄해 배부하세요.</li><li>다른 PC에서 쓰려면 그 PC에서 명단을 다시 붙여 넣으세요. 브라우저 기록(쿠키·사이트 데이터)을 지우면 명단도 지워집니다.</li><li>여러 사람이 함께 쓰는 공용 PC에서는 사용하지 말고, 시험이 끝나면 <b>모두 해제</b>를 눌러 지우세요.</li></ul></div>
+    ${St.docs.special ? `<div class="warnbox" style="margin-top:8px">이전 버전에서 서버에 저장한 통합지원반 명단이 남아 있습니다. <button class="btn sm" data-act="th-migrate">이 PC로 옮기고 서버에서 삭제</button></div>` : ''}
+    <div class="help" style="margin-top:8px">지정한 학생은 원래 시험실의 <b>시험실 좌석배치표·자리배치표·시험실 명단·반별 배정표·결시 입력</b> 화면에 (이 PC에서만) <b class="th">통합반</b>으로 표시됩니다(출석 확인을 위해 자리는 그대로 두고, 실제 시험은 통합지원반에서 봅니다). 과목 칸에는 <span class="th">(통합n)</span>처럼 인원이 붙습니다.</div>
+    <div class="warnbox" style="margin-top:8px">통합지원반 여부는 장애와 관련된 <b>민감정보</b>에 해당할 수 있습니다. 장애 유형·정도 등은 입력하지 말고, 시험이 끝나면 지정을 해제하세요.</div></div>
+  <div class="grid2">
+    <div class="card"><div class="row"><h3 style="margin:0">${g}학년 지정 학생 (${cur.length}명)</h3><span class="right"></span>${cur.length ? '<button class="btn sm bad" data-act="th-clear">모두 해제</button>' : ''}</div>
+      <div style="margin-top:8px">${cur.map(s => `<span class="th-chip">${s.id} ${esc(s.name)}${s.gone ? ' <span class="tag warn">전출/없음</span>' : ''}<button data-act="th-del" data-sid="${s.id}" title="해제">✕</button></span>`).join('') || '<p class="muted small">지정된 학생이 없습니다.</p>'}</div>
+      <h4 style="margin-top:16px">학번·이름 붙여넣기로 한꺼번에 지정</h4>
+      <textarea id="th-paste" rows="4" style="width:100%" placeholder="예) 20409 김찬솔, 20436 추상혁, 20505 김관후&#10;학번만, 이름만(같은 학년에 동명이인이 없을 때) 모두 가능"></textarea>
+      <div class="row" style="margin-top:6px"><button class="btn pri" data-act="th-paste">${g}학년에 추가</button><span class="small muted">고사 계획서의 명단을 그대로 복사해 붙여 넣어도 됩니다.</span></div></div>
+    <div class="card"><div class="row" style="align-items:flex-end"><h3 style="margin:0">반에서 눌러서 지정</h3><span class="right"></span>
+      <label class="f">반${selectHtml('th.cls', cl.map(c => [c, c + '반']), u.cls)}</label></div>
+      <div class="stu-grid" style="margin-top:8px">${list.map(s => `<button class="stu ${set.has(s.id) ? 'pick-on' : ''}" data-act="th-tog" data-sid="${s.id}"><div class="nm"><span class="no">${s.num}</span>${esc(s.name)}</div><div class="ex">${set.has(s.id) ? '<span class="th">통합반</span>' : '&nbsp;'}</div></button>`).join('') || '<p class="muted">학생이 없습니다.</p>'}</div>
+      <p class="small muted">누를 때마다 지정 ↔ 해제되고 이 PC에 바로 저장됩니다.</p></div>
+  </div>`;
+}
+A['th-migrate'] = async () => {
+  const old = ((St.docs.special || {}).tonghap) || {}, d = thLoad();
+  Object.entries(old).forEach(([g, ids]) => { d[g] = [...new Set([...(d[g] || []), ...ids.map(Number)])].sort((a, b) => a - b); });
+  try { thStore(d); await deleteDoc('special'); toast('이 PC로 옮기고 서버에서 삭제했습니다'); render(); } catch (e) { toast(e.message, true); }
+};
+A['th-g'] = b => { St.ui.th.g = b.dataset.g; St.ui.th.cls = null; render(); };
+A['th-tog'] = async b => {
+  const g = +St.ui.th.g, sid = +b.dataset.sid, s = [...thSet(g)];
+  try { await saveTH(g, s.includes(sid) ? s.filter(x => x !== sid) : [...s, sid]); render(); } catch (e) { toast(e.message, true); }
+};
+A['th-del'] = async b => { const g = +St.ui.th.g, sid = +b.dataset.sid; try { await saveTH(g, [...thSet(g)].filter(x => x !== sid)); render(); } catch (e) { toast(e.message, true); } };
+A['th-clear'] = async () => {
+  const g = +St.ui.th.g; if (!await confirmBox(`${g}학년 통합지원반 지정을 모두 해제할까요?`, { danger: true, ok: '모두 해제' })) return;
+  try { await saveTH(g, []); render(); } catch (e) { toast(e.message, true); }
+};
+// 붙여넣은 글에서 학번(5자리)과 이름을 찾아 학생으로 바꿈
+function parseStudentText(g, text) {
+  const act = Core.active(GD(g)), sm = new Map(act.map(s => [s.id, s]));
+  const found = new Map(), miss = [], dup = [];
+  const ids = [...text.matchAll(/(?<!\d)(\d{5})(?!\d)/g)].map(m => +m[1]);
+  ids.forEach(id => { if (sm.has(id)) found.set(id, sm.get(id)); else miss.push(String(id)); });
+  const rest = text.replace(/\d+/g, ' ');
+  const names = [...new Set((rest.match(/[가-힣]{2,5}|[A-Za-z][A-Za-z ]{2,}/g) || []).map(x => x.trim()))]
+    .filter(n => !/^(통합|지원|통합지원반|응시|학년|학번|이름|명단|반)$/.test(n) && !/학년$|응시$|지원반$/.test(n));
+  for (const n of names) {
+    if ([...found.values()].some(s => s.name === n)) continue;
+    const m = act.filter(s => s.name === n);
+    if (m.length === 1) found.set(m[0].id, m[0]); else if (m.length > 1) dup.push(`${n}(${m.map(s => s.id).join('/')})`); else miss.push(n);
+  }
+  return { found: [...found.values()], miss, dup };
+}
+A['th-paste'] = async () => {
+  const g = +St.ui.th.g, t = $('#th-paste').value; if (!t.trim()) return;
+  const { found, miss, dup } = parseStudentText(g, t);
+  if (!found.length) return toast(`찾은 학생이 없습니다${miss.length ? ` (못 찾음: ${miss.join(', ')})` : ''}`, true);
+  const ok = await modal('통합지원반 지정 확인', `<p><b>${g}학년 ${found.length}명</b>을 지정합니다.</p><div>${found.map(s => `<span class="th-chip">${s.id} ${esc(s.name)}</span>`).join('')}</div>
+    ${miss.length ? `<p class="small" style="color:var(--bad)">${g}학년 명단에서 못 찾음: ${esc(miss.join(', '))}</p>` : ''}
+    ${dup.length ? `<p class="small" style="color:var(--warn)">동명이인이라 건너뜀(학번으로 다시 입력): ${esc(dup.join(', '))}</p>` : ''}`, { ok: '지정' });
+  if (!ok) return;
+  try { await saveTH(g, [...thSet(g), ...found.map(s => s.id)]); toast(`${found.length}명을 지정했습니다`); render(); } catch (e) { toast(e.message, true); }
+};
+
+/* =========================================================
+   급식 신청 (담임) · 급식 현황 / 시청각실 출석부 (고사본부)
+   ========================================================= */
+const MEAL_WAIT_NOTE = '1·2교시에 시험이 끝나는 학생은 3교시 종료 후 급식 전까지 시청각실에서 대기합니다(하교했다가 다시 오는 것은 불가).';
+function mealDays() { return days().filter(d => d.date); }
+async function loadMeals(force) {
+  if (St.meals && !force) return St.meals;
+  const ds = mealDays(); const m = {};
+  if (ds.length) {
+    const dates = ds.map(d => d.date).sort();
+    const rows = await rpc('list_meals', { p_from: dates[0], p_to: dates[dates.length - 1] });
+    ds.forEach(d => m[d.date] = new Map());
+    rows.forEach(r => { const k = String(r.date).slice(0, 10); (m[k] || (m[k] = new Map())).set(+r.sid, r); });
+    for (const d of ds) St.subs[d.date] = await rpc('list_submissions', { p_date: d.date });
+  }
+  St.meals = m; return m;
+}
+const mealMap = date => (St.meals && St.meals[date]) || new Map();
+// 그날 학생의 마지막 '시험' 교시 (자습 제외, 시험 없으면 0)
+function endPeriodMap(g, day) {
+  return memo(`ep${g}-${day}`, () => {
+    const a = assignOf(g), m = new Map();
+    for (const p of periodsOfDay(g, day)) {
+      const sl = a && a.slots[Core.slotKey(day, p)]; if (!sl) continue;
+      sl.rows.forEach(r => { if (r[1] !== '자습' && (m.get(r[0]) || 0) < p) m.set(r[0], p); });
+    }
+    return m;
+  });
+}
+const endP = (g, sid, day) => endPeriodMap(g, day).get(+sid) || 0;
+const endLabel = p => p ? `${p}교시 종료` : '시험 없음';
+const mealTime = p => (p <= 3 ? 3 : p);   // 3교시 이전 종료자는 3교시 후, 4교시 응시자는 4교시 후 급식
+const gradeOfSid = sid => Math.floor(+sid / 10000);
+
+function vMeal(v) {
+  const ds = mealDays(), gs = grades();
+  if (!ds.length || !gs.length) return needSetup(v, '고사 일정(날짜) 또는 학생 명단이 등록되지 않았습니다.');
+  if (!St.meals) { v.innerHTML = '<div class="card muted">급식 신청 내역을 불러오는 중…</div>'; loadMeals().then(render).catch(e => { toast(e.message, true); v.innerHTML = `<div class="errbox">불러오지 못했습니다: ${esc(e.message)}<br><span class="small">서버 SQL(supabase_setup.sql)을 최신 버전으로 다시 실행했는지 확인하세요.</span></div>`; }); return; }
+  const u = St.ui.meal; ensure(u, 'mode', ['cls', 'hq'], 'cls');
+  const modeSel = `<label class="f">보기${selectHtml('meal.mode', [['cls', '학급별 신청 (담임)'], ['hq', '신청 현황 · 시청각실 출석부 (고사본부)']], u.mode)}</label>`;
+  return u.mode === 'hq' ? vMealHq(v, modeSel) : vMealCls(v, modeSel);
+}
+function vMealCls(v, modeSel) {
+  const ds = mealDays(), gs = grades(), u = St.ui.meal;
+  ensure(u, 'grade', gs.map(String)); const g = +u.grade, cl = classesOf(g); ensure(u, 'cls', cl.map(String)); const c = +u.cls;
+  const list = Core.active(GD(g)).filter(s => s.cls === c).sort((a, b) => a.num - b.num);
+  const unit = `M:${g}-${c}`;
+  const done = ds.every(d => (St.subs[d.date] || []).some(x => x.period == 0 && x.unit === unit));
+  const cols = ds.map(d => ({ d, has: periodsOfDay(g, d.day).length > 0, mm: mealMap(d.date) }));
+  v.innerHTML = `<div class="card"><div class="row" style="align-items:flex-end">${modeSel}
+      <label class="f">학년${selectHtml('meal.grade', gs.map(x => [x, x + '학년']), u.grade)}</label>
+      <label class="f">학급${selectHtml('meal.cls', cl.map(x => [x, x + '반']), u.cls)}</label>
+      <button class="btn" data-act="meal-reload">↻ 새로고침</button></div>
+    <p class="small muted" style="margin:8px 0 0">급식을 먹는 학생의 칸을 누르면 <b>신청 ↔ 취소</b>되고 바로 저장됩니다. 칸 위의 글자는 그날 그 학생의 <b>시험이 끝나는 교시</b>입니다. 급식은 3교시 후(4교시 시험이 있는 학생은 4교시 후)에 먹으며, ${MEAL_WAIT_NOTE}</p></div>
+  <div class="card"><div class="tbl-wrap"><table class="t ml"><thead><tr><th style="width:44px">번호</th><th>이름</th>
+    ${cols.map(({ d, has, mm }) => { const n = list.filter(s => mm.has(s.id)).length; return `<th style="text-align:center">${d.day}일차 ${fmtDate(d.date, true)}<br>${has ? `<span class="tag ${n ? 'ok' : ''}">신청 ${n}명</span> <button class="btn sm" data-act="meal-all" data-date="${d.date}" data-on="1">전체</button><button class="btn sm" data-act="meal-all" data-date="${d.date}" data-on="0">해제</button>` : '<span class="muted small">시험 없음</span>'}</th>`; }).join('')}</tr></thead>
+    <tbody>${list.map(s => `<tr><td>${s.num}</td><td class="nowrap">${esc(s.name)}</td>${cols.map(({ d, has, mm }) => {
+      const ep = endP(g, s.id, d.day), on = mm.has(s.id);
+      return `<td class="mc"><button class="mbtn ${on ? 'on' : ''}" data-act="meal-tog" data-date="${d.date}" data-sid="${s.id}" ${has || on ? '' : 'disabled'}><span class="e eg${ep}">${endLabel(ep)}</span><span>${on ? '✓ 신청' : '—'}</span></button></td>`;
+    }).join('')}</tr>`).join('') || `<tr><td colspan="${2 + cols.length}" class="muted">학생이 없습니다.</td></tr>`}</tbody></table></div>
+    <div class="row" style="margin-top:12px">${done ? `<span class="tag ok">✓ 입력 완료</span><button class="btn sm" data-act="meal-submit" data-done="0">완료 취소</button>` : '<button class="btn pri" data-act="meal-submit" data-done="1">입력 완료 (고사본부에 알림)</button><span class="small muted">신청자가 없어도 완료를 눌러 주세요.</span>'}</div></div>`;
+}
+async function setMeals(date, studs, on) {
+  const rows = studs.map(({ g, s }) => ({ sid: s.id, grade: g, cls: s.cls, num: s.num, name: s.name }));
+  const mm = St.meals[date] || (St.meals[date] = new Map());
+  rows.forEach(r => on ? mm.set(r.sid, Object.assign({ date }, r)) : mm.delete(r.sid));
+  render();
+  try { await rpc('set_meals', { p_date: date, p_on: on, p_rows: rows }); Api.rtSend({ t: 'meal', date }); }
+  catch (e) { toast('저장 실패: ' + e.message, true); await loadMeals(true).catch(() => { }); render(); }
+}
+A['meal-tog'] = b => {
+  const g = +St.ui.meal.grade, sid = +b.dataset.sid, s = stuMap(g).get(sid); if (!s) return;
+  setMeals(b.dataset.date, [{ g, s }], !mealMap(b.dataset.date).has(sid));
+};
+A['meal-all'] = async b => {
+  const u = St.ui.meal, g = +u.grade, c = +u.cls, date = b.dataset.date, on = b.dataset.on === '1', mm = mealMap(date);
+  const list = Core.active(GD(g)).filter(s => s.cls === c && (on ? !mm.has(s.id) : mm.has(s.id)));
+  if (!list.length) return toast(on ? '모두 이미 신청되어 있습니다' : '신청한 학생이 없습니다');
+  if (!await confirmBox(`${g}학년 ${c}반 ${fmtDate(date)} — ${list.length}명을 ${on ? '모두 신청' : '모두 신청 취소'}할까요?`, { ok: on ? '모두 신청' : '모두 취소', danger: !on })) return;
+  setMeals(date, list.map(s => ({ g, s })), on);
+};
+A['meal-reload'] = async () => { try { await loadMeals(true); await checkVersions(); render(); toast('새로 불러왔습니다'); } catch (e) { toast(e.message, true); } };
+A['meal-submit'] = async b => {
+  const u = St.ui.meal, unit = `M:${u.grade}-${u.cls}`, on = b.dataset.done === '1';
+  try { for (const d of mealDays()) await rpc('mark_submission', { p_date: d.date, p_period: 0, p_unit: unit, p_done: on }); await loadMeals(true); Api.rtSend({ t: 'meal' }); render(); toast(on ? '입력 완료를 알렸습니다' : '완료를 취소했습니다'); }
+  catch (e) { toast(e.message, true); }
+};
+
+/* ---------- 고사본부: 일자·학년별 현황 + 시청각실 출석부 ---------- */
+const MEAL_GROUPS = [
+  { k: 1, t: '1교시 종료', d: '2교시부터 시청각실 대기 → 3교시 후 급식', wait: true },
+  { k: 2, t: '2교시 종료', d: '3교시에 시청각실 대기 → 3교시 후 급식', wait: true },
+  { k: 3, t: '3교시 종료', d: '3교시 후 바로 급식' },
+  { k: 4, t: '4교시 종료', d: '4교시 후 급식' },
+  { k: 0, t: '시험 없음', d: '그날 시험이 없는 학생(확인 필요)' },
+];
+function mealData(date, day, gsel) {
+  const G = gsel === 'all' ? grades() : [+gsel];
+  const list = [...mealMap(date).values()].filter(r => G.includes(+r.grade || gradeOfSid(r.sid))).map(r => {
+    const g = +r.grade || gradeOfSid(r.sid), s = stuMap(g).get(+r.sid);
+    return { g, sid: +r.sid, cls: s ? s.cls : r.cls, num: s ? s.num : r.num, name: s ? s.name : r.name, ep: endP(g, r.sid, day), gone: !s || s.status === '전출' };
+  }).sort((a, b) => a.sid - b.sid);
+  const maxP = Math.max(4, ...list.map(x => x.ep));
+  const groups = [...MEAL_GROUPS.filter(x => x.k), ...Array.from({ length: maxP - 4 }, (_, i) => ({ k: 5 + i, t: `${5 + i}교시 종료`, d: `${5 + i}교시 후 급식` })), MEAL_GROUPS[4]]
+    .map(gr => Object.assign({}, gr, { list: list.filter(x => x.ep === gr.k) })).filter(gr => gr.list.length || (gr.k >= 1 && gr.k <= 3));
+  return { G, list, groups };
+}
+function mealTwoUp(list) {
+  const h = Math.ceil(list.length / 2), cell = (x, i) => x ? `<td>${i + 1}</td><td>${x.sid}</td><td>${esc(x.name)}</td><td></td>` : '<td></td><td></td><td></td><td></td>';
+  const head = '<th style="width:7%">연번</th><th style="width:13%">학번</th><th style="width:17%">이름</th><th style="width:11%">출석</th>';
+  return `<table class="ml2"><thead><tr>${head}<th class="gap"></th>${head}</tr></thead><tbody>${Array.from({ length: h }, (_, i) => `<tr>${cell(list[i], i)}<td class="gap"></td>${cell(list[i + h], i + h)}</tr>`).join('')}</tbody></table>`;
+}
+function mealRosterHtml(date, day, gsel, onlyWait, print) {
+  const { list, groups } = mealData(date, day, gsel), t = esc(P().title || '정기고사');
+  const gl = gsel === 'all' ? '전체 학년' : gsel + '학년';
+  const n3 = list.filter(x => mealTime(x.ep) === 3).length, n4 = list.length - n3;
+  const gg = groups.filter(gr => !onlyWait || gr.wait);
+  return `<div class="${print ? 'pg ml-p' : 'screen-pg pg ml-p'}">
+    <h1>급식 신청자 출석부 (시청각실)</h1>
+    <div class="subt">${t} · <b>${day}일차 ${fmtDate(date)}</b> · ${gl} · 신청 <b>${list.length}명</b> (3교시 후 급식 ${n3}명 · 4교시 이후 급식 ${n4}명)</div>
+    ${gg.map(gr => `<div class="mgrp"><h4>${esc(gr.t)} <span style="font-weight:400;font-size:12px">— ${esc(gr.d)} · ${gr.list.length}명</span></h4>${gr.list.length ? mealTwoUp(gr.list) : '<div class="small" style="color:#666">해당 학생 없음</div>'}</div>`).join('')}
+    <div class="sign" style="margin-top:10px"><span>${esc(MEAL_WAIT_NOTE)}</span></div>
+    <div class="sign"><span></span><span>2교시 감독 ____________ (인)　3교시 감독 ____________ (인)</span></div></div>`;
+}
+function vMealHq(v, modeSel) {
+  const ds = mealDays(), gs = grades(), u = St.ui.meal;
+  ensure(u, 'day', ds.map(d => String(d.day)), String(todayDay() ?? ds[0].day));
+  ensure(u, 'hg', ['all', ...gs.map(String)], 'all');
+  const day = +u.day, date = dateOf(day);
+  const { G, list, groups } = mealData(date, day, u.hg);
+  const subs = St.subs[date] || [];
+  const cnt = k => list.filter(x => x.ep === k).length;
+  const n3 = list.filter(x => mealTime(x.ep) === 3).length;
+  const rows = G.flatMap(g => classesOf(g).map(c => {
+    const L = list.filter(x => x.g === g && x.cls === c);
+    return { g, c, reg: Core.active(GD(g)).filter(s => s.cls === c).length, n: L.length, by: [1, 2, 3, 4].map(k => L.filter(x => x.ep === k).length), etc: L.filter(x => x.ep === 0 || x.ep > 4).length, done: subs.some(x => x.period == 0 && x.unit === `M:${g}-${c}`), has: periodsOfDay(g, day).length > 0 };
+  }));
+  const nDone = rows.filter(r => r.done).length;
+  v.innerHTML = `<div class="card"><div class="row" style="align-items:flex-end">${modeSel}
+      <label class="f">날짜${selectHtml('meal.day', ds.map(d => [d.day, dayLabel(d.day)]), u.day)}</label>
+      <label class="f">학년${selectHtml('meal.hg', [['all', '전체'], ...gs.map(x => [x, x + '학년'])], u.hg)}</label>
+      <button class="btn" data-act="meal-reload">↻ 새로고침</button>
+      <span class="right"></span>
+      <label class="f">용지${selectHtml('meal.paper', paperOpts, u.paper || 'A4')}</label></div>
+    <div class="row" style="margin-top:10px">
+      <label class="chk"><input type="checkbox" data-bind="meal.onlyWait" ${u.onlyWait ? 'checked' : ''}> 시청각실 대기 학생(1·2교시 종료)만</label>
+      <span class="right"></span>
+      <button class="btn pri" data-act="meal-print">출석부 인쇄</button>
+      <button class="btn" data-act="meal-print-all">전체 일차 출석부 인쇄</button>
+      <button class="btn" data-act="meal-xlsx">엑셀 다운로드 (전체 일차)</button></div>
+    <p class="small muted" style="margin:8px 0 0">담임 선생님이 입력한 급식 신청자를 시험이 끝나는 교시별로 묶어 보여 줍니다. ${MEAL_WAIT_NOTE} 출석부는 시청각실 감독 선생님이 출석 칸에 체크하는 용도입니다.</p></div>
+  <div class="stats" style="margin-bottom:12px">
+    <div class="stat"><div class="v">${list.length}</div><div class="k">급식 신청 (${fmtDate(date, true)})</div></div>
+    <div class="stat"><div class="v eg1">${cnt(1)}</div><div class="k">1교시 종료 · 시청각실 대기</div></div>
+    <div class="stat"><div class="v eg2">${cnt(2)}</div><div class="k">2교시 종료 · 시청각실 대기</div></div>
+    <div class="stat"><div class="v eg3">${cnt(3)}</div><div class="k">3교시 종료</div></div>
+    <div class="stat"><div class="v eg4">${list.length - cnt(1) - cnt(2) - cnt(3) - cnt(0)}</div><div class="k">4교시 이후 종료</div></div>
+    <div class="stat ok"><div class="v">${n3} / ${list.length - n3}</div><div class="k">3교시 후 급식 / 4교시 후 급식</div></div>
+  </div>
+  <div class="card"><div class="row"><h3 style="margin:0">학급별 신청 현황</h3><span class="right tag ${nDone === rows.length ? 'ok' : 'warn'}">입력 완료 ${nDone}/${rows.length}반</span></div>
+    <div class="tbl-wrap" style="margin-top:8px"><table class="t"><thead><tr><th>학급</th><th class="num">재적</th><th class="num">신청</th><th class="num">1교시 종료</th><th class="num">2교시 종료</th><th class="num">3교시 종료</th><th class="num">4교시 종료</th><th class="num">기타</th><th>담임 입력</th></tr></thead>
+    <tbody>${G.map(g => { const R = rows.filter(r => r.g === g), sum = i => R.reduce((a, r) => a + r.by[i], 0);
+      return R.map(r => `<tr><td><b>${r.g}-${r.c}</b></td><td class="num">${r.reg}</td><td class="num"><b>${r.n || ''}</b></td>${r.by.map(n => `<td class="num">${n || ''}</td>`).join('')}<td class="num">${r.etc || ''}</td><td>${!r.has ? '<span class="muted small">시험 없음</span>' : r.done ? '<span class="tag ok">완료</span>' : '<span class="tag warn">미완료</span>'}</td></tr>`).join('')
+        + `<tr style="background:var(--line2)"><td><b>${g}학년 계</b></td><td class="num">${R.reduce((a, r) => a + r.reg, 0)}</td><td class="num"><b>${R.reduce((a, r) => a + r.n, 0)}</b></td>${[0, 1, 2, 3].map(i => `<td class="num">${sum(i)}</td>`).join('')}<td class="num">${R.reduce((a, r) => a + r.etc, 0) || ''}</td><td></td></tr>`; }).join('')}</tbody></table></div></div>
+  ${list.some(x => x.ep === 0) ? '<div class="warnbox">그날 시험이 없는 학생이 신청되어 있습니다(“시험 없음” 묶음). 담임 선생님께 확인하세요.</div>' : ''}
+  ${mealRosterHtml(date, day, u.hg, !!u.onlyWait, false)}`;
+  clearTimeout(mealTimer);
+  mealTimer = setTimeout(async () => { if (St.tab === 'meal' && St.ui.meal.mode === 'hq' && document.visibilityState === 'visible' && !$('.modal-bg')) { try { await loadMeals(true); render(); } catch (e) { } } }, 20000);
+}
+let mealTimer = null;
+A['meal-print'] = () => { const u = St.ui.meal, day = +u.day; printHtml(mealRosterHtml(dateOf(day), day, u.hg, !!u.onlyWait, true), u.paper, 'A4'); };
+A['meal-print-all'] = () => { const u = St.ui.meal; printHtml(mealDays().map(d => mealRosterHtml(d.date, d.day, u.hg, !!u.onlyWait, true)).join(''), u.paper, 'A4'); };
+A['meal-xlsx'] = () => withExcel('엑셀 만드는 중', async () => {
+  const u = St.ui.meal, paper = u.paper || 'A4', ds = mealDays(), wb = new ExcelJS.Workbook();
+  const gl = u.hg === 'all' ? '전체학년' : u.hg + '학년';
+  // 1) 학급별 집계 (일자별 신청 인원)
+  const G = u.hg === 'all' ? grades() : [+u.hg];
+  const ws0 = wb.addWorksheet('학급별 집계'); xlSetup(ws0, paper, false);
+  ws0.columns = [{ width: 12 }, { width: 7 }, ...ds.flatMap(() => [{ width: 8 }, { width: 8 }, { width: 8 }])];
+  const nc0 = 2 + ds.length * 3;
+  xm(ws0, 1, 1, 1, nc0, `${P().title || '정기고사'}  급식 신청 인원 (${gl})`, { bold: true, size: 14, noBorder: true, h: 'left' });
+  xm(ws0, 3, 1, 4, 1, '학반', { bold: true, fill: 'FFEEEEEE' }); xm(ws0, 3, 2, 4, 2, '재적', { bold: true, fill: 'FFEEEEEE' });
+  ds.forEach((d, i) => { xm(ws0, 3, 3 + i * 3, 3, 5 + i * 3, `${d.day}일차 ${fmtDate(d.date, true)}`, { bold: true, fill: 'FFEEEEEE' }); ['신청', '3교시 후', '4교시 후'].forEach((h, k) => xc(ws0, 4, 3 + i * 3 + k, h, { bold: true, fill: 'FFEEEEEE', size: 9 })); });
+  let r = 5; const tot = ds.map(() => [0, 0, 0]);
+  for (const g of G) for (const c of classesOf(g)) {
+    xc(ws0, r, 1, `${g}학년 ${c}반`); xc(ws0, r, 2, Core.active(GD(g)).filter(s => s.cls === c).length);
+    ds.forEach((d, i) => { const L = mealData(d.date, d.day, String(g)).list.filter(x => x.cls === c), a = L.filter(x => mealTime(x.ep) === 3).length;
+      [L.length, a, L.length - a].forEach((n, k) => { xc(ws0, r, 3 + i * 3 + k, n, k ? {} : { bold: true }); tot[i][k] += n; }); });
+    r++;
+  }
+  xc(ws0, r, 1, '합계', { bold: true, fill: 'FFF3F3F3' }); xc(ws0, r, 2, '', { fill: 'FFF3F3F3' });
+  ds.forEach((d, i) => tot[i].forEach((n, k) => xc(ws0, r, 3 + i * 3 + k, n, { bold: true, fill: 'FFF3F3F3' })));
+  // 2) 일자별 시청각실 출석부 (종료 교시별 묶음, 좌우 2단)
+  for (const d of ds) {
+    const { list, groups } = mealData(d.date, d.day, u.hg);
+    const ws = wb.addWorksheet(xlSheetName(`${d.day}일차 출석부`)); xlSetup(ws, paper, false);
+    ws.columns = [{ width: 5 }, { width: 9 }, { width: 11 }, { width: 7 }, { width: 2 }, { width: 5 }, { width: 9 }, { width: 11 }, { width: 7 }];
+    const n3 = list.filter(x => mealTime(x.ep) === 3).length;
+    xm(ws, 1, 1, 1, 9, '급식 신청자 출석부 (시청각실)', { bold: true, size: 15, noBorder: true }); ws.getRow(1).height = 26;
+    xm(ws, 2, 1, 2, 9, `${P().title || '정기고사'} · ${d.day}일차 ${fmtDate(d.date)} · ${u.hg === 'all' ? '전체 학년' : u.hg + '학년'} · 신청 ${list.length}명 (3교시 후 ${n3} · 4교시 이후 ${list.length - n3})`, { noBorder: true, size: 10 });
+    let rr = 4;
+    for (const gr of groups.filter(x => !u.onlyWait || x.wait)) {
+      xm(ws, rr, 1, rr, 9, `${gr.t} — ${gr.d} · ${gr.list.length}명`, { bold: true, noBorder: true, h: 'left', size: 11 }); rr++;
+      if (!gr.list.length) { xm(ws, rr, 1, rr, 9, '해당 학생 없음', { noBorder: true, h: 'left', size: 9, color: 'FF666666' }); rr += 2; continue; }
+      ['연번', '학번', '이름', '출석'].forEach((h, k) => { xc(ws, rr, 1 + k, h, { bold: true, fill: 'FFEEEEEE' }); xc(ws, rr, 6 + k, h, { bold: true, fill: 'FFEEEEEE' }); }); rr++;
+      const h = Math.ceil(gr.list.length / 2);
+      for (let i = 0; i < h; i++, rr++) {
+        [[gr.list[i], i, 1], [gr.list[i + h], i + h, 6]].forEach(([x, n, c0]) => { xc(ws, rr, c0, x ? n + 1 : ''); xc(ws, rr, c0 + 1, x ? x.sid : ''); xc(ws, rr, c0 + 2, x ? x.name : ''); xc(ws, rr, c0 + 3, ''); });
+        ws.getRow(rr).height = 19;
+      }
+      rr++;
+    }
+    xm(ws, rr, 1, rr, 9, MEAL_WAIT_NOTE, { noBorder: true, h: 'left', size: 9 }); rr++;
+    xm(ws, rr + 1, 1, rr + 1, 9, '2교시 감독 ____________ (인)      3교시 감독 ____________ (인)', { noBorder: true, h: 'right' });
+  }
+  // 3) 전체 명단(정렬·필터용)
+  const wl = wb.addWorksheet('신청 명단'); wl.columns = [11, 6, 5, 5, 9, 11, 11, 11].map(w => ({ width: w }));
+  ['날짜', '학년', '반', '번호', '학번', '이름', '시험 종료', '급식 시간'].forEach((h, k) => xc(wl, 1, 1 + k, h, { bold: true, fill: 'FFEEEEEE' }));
+  let rl = 2;
+  for (const d of ds) for (const x of mealData(d.date, d.day, u.hg).list) { [d.date, x.g, x.cls, x.num, x.sid, x.name, endLabel(x.ep), `${mealTime(x.ep)}교시 후`].forEach((val, k) => xc(wl, rl, 1 + k, val)); rl++; }
+  wl.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(1, rl - 1), column: 8 } };
+  await xlSave(wb, `급식신청_${gl}.xlsx`);
+});
+window.BIND_HOOKS = Object.assign(window.BIND_HOOKS || {}, { 'meal.grade': () => { St.ui.meal.cls = null; }, 'th.cls': () => { } });
 
 </script>
 </body>
