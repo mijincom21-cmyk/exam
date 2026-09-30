@@ -1136,6 +1136,9 @@ function vAbs(v) {
   const subs = (St.subs[date] || []).find(x => x.period == u.period && x.unit === unit);
   const nAbs = list.filter(x => am.has(x.s.id)).length;
   const nExam = list.filter(x => x.r && x.r.subj !== '자습').length;
+  // 담임: 그날 이 반 학생이 학교에 있는 교시 전체 (한 번에 제출용)
+  const dayPers = u.mode === 'room' ? [] : pers.filter(p => { const ix2 = idx(g, Core.slotKey(u.day, p)); return list.some(x => ix2.get(x.s.id)); });
+  const dayDone = dayPers.filter(p => (St.subs[date] || []).some(x => x.period == p && x.unit === unit)).length;
   v.innerHTML = `
   <div class="card">
     <div class="row" style="align-items:flex-end">
@@ -1162,7 +1165,11 @@ function vAbs(v) {
     <div class="row" style="margin-top:14px">
       ${subs ? `<span class="tag ok">✓ 제출 완료 ${new Date(subs.submitted_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</span><button class="btn sm" data-act="abs-submit" data-unit="${esc(unit)}" data-done="0">제출 취소</button>`
         : `<button class="btn pri" data-act="abs-submit" data-unit="${esc(unit)}" data-done="1">입력 완료 (고사본부에 제출)</button><span class="small muted">결시가 없어도 제출을 눌러 확인해 주세요.</span>`}
+      ${u.mode !== 'room' && dayPers.length > 1 ? `<span class="right"></span>${dayDone === dayPers.length
+        ? `<span class="tag ok">✓ 오늘 전체 ${dayPers.length}개 교시 제출 완료</span>`
+        : `<span class="small muted">오늘 ${dayDone}/${dayPers.length}교시 제출</span><button class="btn pri" data-act="abs-submit-day" data-unit="${esc(unit)}">오늘 전체 교시 입력 완료 (${dayPers.join('·')}교시)</button>`}` : ''}
     </div>
+    ${u.mode !== 'room' ? '<p class="tiny muted" style="margin:6px 0 0">제출한 뒤에도 결시는 고칠 수 있습니다. 예) 1·2교시 지각 후 3교시 등교 → 교시에서 3교시를 고르고 학생 이름을 눌러 <b>결시 해제</b> (1·2교시 기록은 그대로 유지)</p>' : ''}
   </div>`}
   <p class="small muted">입력 내용은 실시간으로 고사본부에 반영됩니다. 입력이 끝나면 로그아웃해 주세요. ${IDLE_MIN}분간 사용이 없으면 자동 로그아웃됩니다.</p>`;
 }
@@ -1548,6 +1555,17 @@ A['create-school'] = async () => {
 };
 A['abs-pick'] = b => absPop(b);
 A['abs-reload'] = async () => { const d = dateOf(St.ui.abs.day); try { await loadAbs(d, true); render(); toast('새로 불러왔습니다'); } catch (e) { toast(e.message, true); } };
+A['abs-submit-day'] = async b => {
+  const u = St.ui.abs, g = +u.grade, date = dateOf(u.day), unit = b.dataset.unit;
+  const list = Core.active(GD(g)).filter(s => s.cls == u.cls);
+  const pers = periodsOfDay(g, u.day).filter(p => { const ix = idx(g, Core.slotKey(u.day, p)); return list.some(s => ix.get(s.id)); });
+  const todo = pers.filter(p => !(St.subs[date] || []).some(x => x.period == p && x.unit === unit));
+  if (!await confirmBox(`${g}학년 ${u.cls}반 ${fmtDate(date)} ${todo.join('·')}교시를 모두 입력 완료로 제출할까요?\n(제출 후에도 결시는 교시별로 고칠 수 있습니다)`, { ok: '전체 제출' })) return;
+  try {
+    for (const p of todo) await rpc('mark_submission', { p_date: date, p_period: p, p_unit: unit, p_done: true });
+    await loadAbs(date, true); Api.rtSend({ t: 'abs', date }); render(); toast(`${todo.join('·')}교시를 제출했습니다`);
+  } catch (e) { toast(e.message, true); }
+};
 A['abs-submit'] = async b => {
   const u = St.ui.abs, date = dateOf(u.day);
   try { await rpc('mark_submission', { p_date: date, p_period: +u.period, p_unit: b.dataset.unit, p_done: b.dataset.done === '1' }); await loadAbs(date, true); Api.rtSend({ t: 'abs', date }); render(); toast(b.dataset.done === '1' ? '제출했습니다' : '제출을 취소했습니다'); }
