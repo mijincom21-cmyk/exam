@@ -2027,7 +2027,8 @@ function sAssign(v) {
   ${gs.length ? `<div class="card"><h3>B. 자동 배치 만들기 <span class="tag">파일 없는 학년 · ③ 고사 시간표 입력 후</span></h3>
     <div class="row">${gs.map(x => `<button class="btn sm ${x === +u.g ? 'pri' : ''}" data-act="as-g" data-g="${x}">${x}학년</button>`).join('')}</div>
     ${autoPanel(+u.g)}</div>` : ''}
-  <div class="card"><h3>C. 현재 배치 상태</h3>${gs.map(statusPanel).join('') || '<p class="muted">등록된 학년이 없습니다.</p>'}</div>`;
+  ${gs.length ? `<div class="card" id="mv-card"><h3>C. 시험실 직접 고치기 <span class="tag">관리자</span></h3>${movePanel()}</div>` : ''}
+  <div class="card"><h3>D. 현재 배치 상태</h3>${gs.map(statusPanel).join('') || '<p class="muted">등록된 학년이 없습니다.</p>'}</div>`;
   bindDrop('drop-exam', async files => {
     const f = files[0];
     try {
@@ -2037,6 +2038,20 @@ function sAssign(v) {
       St.pending.exam = { fileName: f.name, r }; render();
     } catch (e) { toast(e.message, true); }
   });
+}
+// 올린 파일과 지금 저장된 배치를 비교 → 실제로 바뀌는 칸이 있는지 보여 줌
+function diffWithCurrent(g, G2) {
+  const cur = St.docs['assign:' + g]; if (!cur || !cur.slots) return '';
+  const changed = [];
+  for (const k of sortedSlotKeys(G2.slots)) {
+    const old = new Map(((cur.slots[k] || {}).rows || []).map(x => [x[0], x]));
+    let n = 0; const ex = [];
+    for (const x of G2.slots[k].rows) { const o = old.get(x[0]); if (!o) continue; if (o[2] !== x[2] || (o[3] || 0) !== (x[3] || 0) || o[1] !== x[1]) { n++; if (ex.length < 3) ex.push(`${x[0]} ${esc(o[2])}→<b>${esc(x[2])}</b>`); } }
+    if (n) changed.push(`${slotLabel(k)} ${n}명 (${ex.join(', ')}${n > 3 ? ' …' : ''})`);
+  }
+  return changed.length
+    ? `<div class="okbox">지금 저장된 배치와 비교해 <b>바뀌는 학생</b>이 있습니다. [반영하기]를 누르면 적용됩니다.<br><span class="small">${changed.slice(0, 8).join('<br>')}${changed.length > 8 ? `<br>외 ${changed.length - 8}개 교시` : ''}</span></div>`
+    : `<div class="warnbox"><b>지금 저장된 시험실·좌석과 똑같은 파일입니다.</b> 시험실을 고쳤는데도 이렇게 나오면, 엑셀의 <b>배치종합</b> 시트가 아직 옛 배정 그대로입니다. 엑셀(매크로 사용)에서 <b>시험실배정</b>을 고친 뒤 배치종합을 다시 만드는 실행 버튼을 누르고, 배치종합 시트에 새 시험실이 보이는지 확인한 다음 저장해서 다시 올리세요.</div>`;
 }
 function examPreview(pe) {
   const r = pe.r;
@@ -2057,6 +2072,7 @@ function examPreview(pe) {
         ${unk.length ? `<div class="warnbox">학생편성현황에 없는 과목명: ${unk.map(esc).join(', ')} (과목명이 다르면 응시자 명단 연결이 안 됩니다)</div>` : ''}
         ${!notIn.length && !missing.length && !unk.length ? '<div class="okbox">등록된 명단·과목과 모두 일치합니다.</div>' : ''}`;
     } else chk = nice ? `<div class="okbox">${g}학년 명단이 아직 없어서, 파일 속 <b>학생편성현황</b> 시트(${nice.students.length}명)로 함께 등록합니다.</div>` : `<div class="errbox">${g}학년 명단이 없습니다. 먼저 ① 학생 편성을 등록하세요.</div>`;
+    chk += diffWithCurrent(g, G2);
     return `<h4 style="margin-top:12px">${g}학년 · ${fileIds.size}명 · ${Object.keys(G2.slots).length}개 교시</h4>
     <div class="tbl-wrap" style="max-height:260px"><table class="t"><thead><tr><th>일시</th><th>과목</th><th class="num">인원</th><th>시험실</th></tr></thead><tbody>
     ${sortedSlotKeys(G2.slots).map(k => { const sl = G2.slots[k]; const rooms = [...new Set(sl.rows.map(x => x[2]))].sort(natCmp); const { day, period } = Core.parseSlotKey(k);
@@ -2961,7 +2977,97 @@ A['meal-xlsx'] = () => withExcel('엑셀 만드는 중', async () => {
   wl.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(1, rl - 1), column: 8 } };
   await xlSave(wb, `급식신청_${gl}.xlsx`);
 });
-window.BIND_HOOKS = Object.assign(window.BIND_HOOKS || {}, { 'meal.grade': () => { St.ui.meal.cls = null; }, 'th.cls': () => { } });
+window.BIND_HOOKS = Object.assign(window.BIND_HOOKS || {}, { 'meal.grade': () => { St.ui.meal.cls = null; }, 'th.cls': () => { },
+  'mv.g': () => { Object.assign(St.ui.mv, { from: null, subj: 'all', to: '' }); }, 'mv.from': () => { St.ui.mv.subj = 'all'; St.ui.mv.to = ''; } });
+
+/* =========================================================
+   ⑤-C 시험실 직접 고치기: 어느 시험실의 학생들을 통째로 다른 시험실로 옮김
+   ========================================================= */
+// 옮길 대상 교시 목록
+function mvKeys(g, u) {
+  const keys = slotKeysOf(g);
+  if (u.scope === 'all') return keys;
+  if (u.scope === 'day') return keys.filter(k => Core.parseSlotKey(k).day == u.day);
+  return keys.filter(k => k === Core.slotKey(u.day, u.period));
+}
+// 그 교시에 대상 시험실을 이미 쓰는 좌석(모든 학년)
+function mvOccupied(k, room, skipG, movingIds) {
+  const occ = new Map();
+  grades().forEach(g => { const a = assignOf(g), sl = a && a.slots[k]; if (!sl) return;
+    sl.rows.forEach(r => { if (r[2] === room && !(g === skipG && movingIds.has(r[0])) && r[3]) occ.set(r[3], { g, sid: r[0] }); }); });
+  return occ;
+}
+// 실제 변경 계획 계산 (미리보기와 반영에 함께 사용)
+function mvPlan(g, u) {
+  const a = assignOf(g); if (!a || !u.from || !u.to) return [];
+  return mvKeys(g, u).map(k => {
+    const rows = (a.slots[k] ? a.slots[k].rows : []).filter(r => r[2] === u.from && (!u.subj || u.subj === 'all' || r[1] === u.subj));
+    if (!rows.length) return null;
+    const ids = new Set(rows.map(r => r[0])), occ = mvOccupied(k, u.to, g, ids);
+    const clash = rows.filter(r => r[3] && occ.has(r[3])).length;
+    const startAt = Math.max(0, ...occ.keys());
+    const seatMode = clash ? 'append' : 'keep';
+    const sorted = rows.slice().sort((x, y) => (x[3] || 999) - (y[3] || 999) || x[0] - y[0]);
+    const newSeat = new Map(sorted.map((r, i) => [r[0], seatMode === 'keep' ? r[3] : startAt + i + 1]));
+    return { k, n: rows.length, subs: [...new Set(rows.map(r => r[1]))], occ: occ.size, clash, seatMode, newSeat };
+  }).filter(Boolean);
+}
+function movePanel() {
+  const gs = grades().filter(g => assignOf(g)); if (!gs.length) return '<p class="muted">아직 시험 배치가 없습니다.</p>';
+  const u = St.ui.mv || (St.ui.mv = {});
+  ensure(u, 'g', gs.map(String)); const g = +u.g;
+  ensure(u, 'scope', ['slot', 'day', 'all'], 'slot');
+  const ds = days().filter(d => periodsOfDay(g, d.day).length).map(d => d.day);
+  ensure(u, 'day', ds.map(String));
+  const pers = periodsOfDay(g, +u.day); ensure(u, 'period', pers.map(String));
+  // 고를 수 있는 '원래 시험실': 대상 교시들에서 쓰인 시험실
+  const a = assignOf(g), keys = mvKeys(g, u);
+  const roomSet = new Set(); keys.forEach(k => (a.slots[k] ? a.slots[k].rows : []).forEach(r => r[2] && roomSet.add(r[2])));
+  const rooms = [...roomSet].sort(natCmp); ensure(u, 'from', rooms);
+  const subSet = new Set(); keys.forEach(k => (a.slots[k] ? a.slots[k].rows : []).forEach(r => r[2] === u.from && subSet.add(r[1])));
+  const subs = [...subSet].sort(natCmp); ensure(u, 'subj', ['all', ...subs], 'all');
+  const allR = allRooms();
+  const plan = mvPlan(g, u), total = plan.reduce((x, p) => x + p.n, 0);
+  const same = u.to && u.to === u.from;
+  const edits = ((St.docs['assign:' + g] || {}).edits || []).slice(-5).reverse();
+  return `<p class="small muted">시험실을 잘못 배정했을 때, 한 시험실에 배정된 학생들을 <b>통째로 다른 시험실로</b> 옮깁니다. 과목·학번·자습 여부는 그대로이고 시험실(필요하면 좌석번호)만 바뀝니다. 결시 입력·자리배치표·좌석배치표·반별 배정표·개인 시간표에 바로 반영됩니다.</p>
+  <div class="row" style="align-items:flex-end;flex-wrap:wrap">
+    <label class="f">학년${selectHtml('mv.g', gs.map(x => [x, x + '학년']), u.g)}</label>
+    <label class="f">범위${selectHtml('mv.scope', [['slot', '한 교시만'], ['day', '그날 전체 교시'], ['all', '전체 일차·교시']], u.scope)}</label>
+    ${u.scope !== 'all' ? `<label class="f">날짜${selectHtml('mv.day', ds.map(d => [d, dayLabel(d)]), u.day)}</label>` : ''}
+    ${u.scope === 'slot' ? `<label class="f">교시${selectHtml('mv.period', pers.map(p => [p, `${p}교시 · ${slotSubjects(g, Core.slotKey(u.day, p)).join(', ') || '자습'}`]), u.period)}</label>` : ''}
+    <label class="f">원래 시험실${selectHtml('mv.from', rooms.length ? rooms : [['', '-']], u.from)}</label>
+    <label class="f">과목${selectHtml('mv.subj', [['all', '전체 (자습 포함)'], ...subs.map(x => [x, x])], u.subj)}</label>
+    <span style="font-size:20px;padding:0 4px 6px">→</span>
+    <label class="f">바꿀 시험실<input type="text" id="mv-to" list="mv-rooms" value="${esc(u.to || '')}" placeholder="예: 2-3" style="width:110px"></label>
+    <datalist id="mv-rooms">${allR.map(r => `<option value="${esc(r)}">`).join('')}</datalist>
+    <button class="btn" data-act="mv-preview">미리보기</button>
+  </div>
+  ${u.to ? (same ? '<div class="warnbox">원래 시험실과 바꿀 시험실이 같습니다.</div>' : !plan.length ? '<div class="warnbox">조건에 맞는 학생이 없습니다.</div>' : `
+  <div class="tbl-wrap" style="margin-top:10px"><table class="t"><thead><tr><th>교시</th><th>과목</th><th class="num">옮길 학생</th><th>${esc(u.to)} 사용 현황</th><th>좌석번호</th></tr></thead><tbody>
+    ${plan.map(p => `<tr><td class="nowrap">${slotLabel(p.k)}</td><td>${p.subs.map(esc).join(', ')}</td><td class="num"><b>${p.n}</b></td>
+      <td>${p.occ ? `<span class="tag warn">이미 ${p.occ}명 배정됨</span>` : '<span class="muted small">비어 있음</span>'}</td>
+      <td class="small">${p.seatMode === 'keep' ? '그대로 유지' : `<b>겹쳐서</b> ${Math.min(...p.newSeat.values())}번부터 이어서 배정`}</td></tr>`).join('')}
+  </tbody></table></div>
+  <div class="row" style="margin-top:8px"><button class="btn pri" data-act="mv-apply">${esc(u.from)} → ${esc(u.to)} 로 ${total}명 옮기기</button>
+    <span class="small muted">되돌리려면 같은 방법으로 반대로(${esc(u.to)} → ${esc(u.from)}) 옮기면 됩니다.</span></div>`) : ''}
+  ${St.docs['assign:' + g] && St.docs['assign:' + g].source === 'file' ? '<p class="tiny muted" style="margin-top:8px">※ 나중에 시험시간표 파일을 다시 올려 [반영하기]를 누르면 여기서 고친 내용은 파일 내용으로 덮어써집니다.</p>' : ''}
+  ${edits.length ? `<div class="small" style="margin-top:8px"><b>최근 수정</b><br>${edits.map(e => `${fmtTime(e.at)} · ${esc(e.label)} · ${esc(e.from)} → ${esc(e.to)} (${e.n}명)`).join('<br>')}</div>` : ''}`;
+}
+A['mv-preview'] = () => { St.ui.mv.to = ($('#mv-to')?.value || '').trim(); render(); };
+A['mv-apply'] = async () => {
+  const u = St.ui.mv, g = +u.g, plan = mvPlan(g, u); if (!plan.length) return;
+  const total = plan.reduce((x, p) => x + p.n, 0);
+  if (!await confirmBox(`${g}학년 ${u.from} → ${u.to}\n${plan.map(p => `${slotLabel(p.k)} ${p.n}명${p.seatMode === 'append' ? ' (좌석 이어서 배정)' : ''}`).join('\n')}\n\n총 ${total}명의 시험실을 바꿀까요?`, { ok: '옮기기' })) return;
+  const A2 = clone(St.docs['assign:' + g] || assignOf(g)); if (A2.source === 'live') A2.source = 'auto';
+  for (const p of plan) {
+    A2.slots[p.k].rows.forEach(r => { if (r[2] === u.from && (u.subj === 'all' || r[1] === u.subj) && p.newSeat.has(r[0])) { r[2] = u.to; r[3] = p.newSeat.get(r[0]); } });
+  }
+  const label = u.scope === 'all' ? '전체 일차' : u.scope === 'day' ? `${u.day}일차 전체` : `${u.day}일차 ${u.period}교시`;
+  (A2.edits || (A2.edits = [])).push({ at: nowIso(), label: label + (u.subj !== 'all' ? ` ${u.subj}` : ''), from: u.from, to: u.to, n: total });
+  A2.updatedAt = nowIso();
+  try { await saveDoc('assign:' + g, A2); toast(`${total}명을 ${u.to}로 옮겼습니다`); u.from = u.to; u.to = ''; render(); } catch (e) { toast(e.message, true); }
+};
 
 </script>
 </body>
