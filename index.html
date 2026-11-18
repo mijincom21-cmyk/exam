@@ -311,6 +311,56 @@ table.ml2 th{background:#eee}
 table.ml2 td.gap,table.ml2 th.gap{border:0;background:transparent;width:3%}
 table.ml2 tr{break-inside:avoid}
 
+/* 역할별 큰 탭 + 왼쪽 미니 탭 */
+.lay{display:grid;grid-template-columns:150px minmax(0,1fr);gap:16px;align-items:start}
+nav.mini{display:flex;flex-direction:column;gap:4px;position:sticky;top:10px}
+nav.mini button{text-align:left;border:1px solid transparent;background:none;border-radius:8px;padding:10px 12px;cursor:pointer;font-weight:600;color:var(--sub);font-size:14px}
+nav.mini button:hover{background:var(--line2)}
+nav.mini button.on{background:var(--pri);color:#fff}
+.pane{min-width:0}
+@media(max-width:760px){
+  .lay{grid-template-columns:1fr;gap:8px}
+  nav.mini{flex-direction:row;overflow-x:auto;position:static;padding-bottom:2px}
+  nav.mini button{white-space:nowrap;padding:7px 12px;border:1px solid var(--line);border-radius:99px;font-size:13px}
+}
+@media print{.lay{display:block} nav.mini{display:none}}
+
+.pchk{display:flex;flex-direction:column;gap:2px}
+.pchk label{display:flex;align-items:center;gap:6px;font-size:13px;padding:3px 6px;border-radius:6px;cursor:pointer}
+.pchk label:hover{background:var(--line2)}
+.pchk label.cur{background:var(--pri-soft);font-weight:700}
+.pop{width:280px}
+
+/* 시험 시간표 작성 */
+.sx-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px}
+.sx-subj{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:7px 10px;cursor:pointer;background:#fff;font-size:13.5px}
+.sx-subj.on{border-color:var(--pri);background:var(--pri-soft)}
+.sx-subj .n{flex:1}
+.sx-subj .c{color:var(--sub);font-variant-numeric:tabular-nums}
+.sx-bun{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px}
+.sx-chip{cursor:pointer;border:1px solid var(--line);background:#fff;margin:2px}
+.sx-chip.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+.sx-chip:disabled{opacity:.35;cursor:not-allowed}
+.sx-w{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+.sx-w label{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13.5px}
+.sx-w input{width:90px}
+.sx-tt-wrap{overflow-x:auto}
+table.sx-tt td.cell{cursor:pointer;min-width:110px;vertical-align:top}
+table.sx-tt td.cell.na{cursor:default;color:var(--sub);text-align:center}
+table.sx-tt td.cell.vio{background:var(--bad-soft);outline:2px solid var(--bad)}
+table.sx-st{margin-top:10px}
+td.warnc{color:var(--warn);font-weight:700} td.badc{color:var(--bad);font-weight:700}
+.sx-diff{margin-top:10px;border:1px dashed var(--line);border-radius:10px;padding:10px}
+td.okc,b.okc{color:var(--ok);font-weight:700} b.badc{color:var(--bad)}
+details.bd{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px}
+details.bd summary{cursor:pointer}
+.pl-sub{border-top:1px solid var(--line2);padding:10px 0 4px;margin-top:8px}
+.pl-rooms{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.pl-room{display:flex;flex-direction:column;align-items:center;min-width:56px;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 8px;cursor:pointer;font-weight:700;font-size:13px}
+.pl-room .tiny{font-weight:400}
+.pl-room.on{background:var(--pri);border-color:var(--pri);color:#fff}
+.pl-room.taken{background:var(--line2);color:var(--sub);cursor:not-allowed}
+
 </style>
 </head>
 <body>
@@ -372,7 +422,10 @@ table.ml2 tr{break-inside:avoid}
       let skippedJoint = 0, skippedBad = 0;
       for (let r = hr + 1; r < rows.length; r++) {
         const row = rows[r] || [];
-        const name = S(row[C.name]); if (!name) continue;
+        let name = S(row[C.name]); if (!name) continue;
+        // 나이스 '(미재학) 홍길동' 표시 = 자퇴·전출 등으로 현재 학교에 없는 학생 → 처음부터 응시 제외로 등록
+        let gone = null; const gm = name.match(/^\(\s*(미재학|휴학|유예|제적|자퇴|전출|위탁)\s*\)\s*/);
+        if (gm) { gone = gm[1]; name = name.slice(gm[0].length).trim(); }
         const clsRaw = S(row[C.cls]);
         if (/공동|교육과정반/.test(clsRaw)) { skippedJoint++; continue; }
         const cls = N(clsRaw), num = N(row[C.num]);
@@ -386,7 +439,7 @@ table.ml2 tr{break-inside:avoid}
           st: new Map(), subjects: new Map(), enroll: {}, niceRoom: {}
         });
         const id = sidOf(grade, cls, num);
-        if (!g.st.has(id)) g.st.set(id, { id, cls, num, name, status: '재학' });
+        if (!g.st.has(id)) g.st.set(id, gone ? { id, cls, num, name, status: '전출', outType: gone, auto: true } : { id, cls, num, name, status: '재학' });
         let room = S(row[C.room]);
         const m = room.match(/^\d+\s*\(\s*(\d+)\s*학년\s*(\d+)\s*반\s*\)$/);
         if (m) room = m[1] + '-' + m[2];
@@ -543,7 +596,8 @@ table.ml2 tr{break-inside:avoid}
     const inRoom = st.filter(s => subjOf[s.id] !== '자습' || !present || present(s.id));
     const rows = [];
     const allCommon = st.every(s => subjOf[s.id] !== '자습');
-    if (mode === 'home' || allCommon) {
+    // 모두 응시하는 칸이라도 '과목별 이동'을 고르면(예: 중국어·일본어 회화 묶음) 과목별 교실로 나눔
+    if (mode === 'home' || (allCommon && !(opt.subRooms && subjects.length > 1))) {
       const byCls = {};
       inRoom.forEach(s => (byCls[s.cls] || (byCls[s.cls] = [])).push(s));
       for (const c of Object.keys(byCls).map(Number).sort(cmpNum)) {
@@ -559,15 +613,35 @@ table.ml2 tr{break-inside:avoid}
     const nextRoom = () => { if (ri < rooms.length) return rooms[ri++]; overflow++; return '추가' + overflow; };
     const place = list => {
       let room = null, seat = 0;
+      // even: 정원을 넘지 않는 선에서 교실별 인원을 고르게 (예: 122명·정원 38 → 31·31·30·30)
+      const nR = Math.max(1, Math.ceil(list.length / cap)), base = Math.floor(list.length / nR), extra = list.length % nR;
+      let ri2 = 0; const lim = () => opt.even ? base + (ri2 <= extra ? 1 : 0) : cap;
       for (const s of list) {
-        if (!room || seat >= cap) { room = nextRoom(); seat = 0; }
+        if (!room || seat >= lim()) { room = nextRoom(); seat = 0; ri2++; }
         rows.push([s.id, subjOf[s.id], room, ++seat]);
       }
     };
-    for (const sub of subjects) place(inRoom.filter(s => subjOf[s.id] === sub));
-    // 자습: 남은 교실 중 뒤쪽 교실부터 고르게 분산
+    // subRooms: 과목별로 고사 담당자가 고른 교실 → 학번순으로 교실마다 고르게 (정원 초과 허용)
+    const SR = opt.subRooms || {}, usedR = new Set();
+    const placeIn = (list, rs) => {
+      const nR = rs.length, base = Math.floor(list.length / nR), extra = list.length % nR; let i = 0;
+      rs.forEach((room, ri3) => { usedR.add(room); const n = base + (ri3 < extra ? 1 : 0); for (let k = 0; k < n; k++, i++) rows.push([list[i].id, subjOf[list[i].id], room, k + 1]); });
+    };
+    const hasSR = subjects.some(sub => SR[sub] && SR[sub].length);
+    for (const sub of subjects) {
+      const list = inRoom.filter(s => subjOf[s.id] === sub);
+      if (SR[sub] && SR[sub].length) { if (list.length) placeIn(list, SR[sub]); }
+      else { if (hasSR) { while (ri < rooms.length && [...Object.values(SR)].some(r => r && r.includes(rooms[ri]))) ri++; } place(list); }
+    }
+    // 자습: 남은 교실에 고르게 분산 (과목 교실을 직접 고른 경우 남는 교실 중 앞 번호부터)
     const rest = inRoom.filter(s => subjOf[s.id] === '자습');
-    if (rest.length) {
+    if (rest.length && hasSR) {
+      rows.forEach(r => usedR.add(r[2]));
+      const remain = rooms.filter(r => !usedR.has(r)), need = Math.max(1, Math.ceil(rest.length / cap));
+      const use = remain.length >= need ? remain.slice(0, need) : remain.concat(Array.from({ length: need - remain.length }, () => '추가' + (++overflow)));
+      const base = Math.floor(rest.length / use.length), extra = rest.length % use.length; let i = 0;
+      use.forEach((room, ri3) => { const n = base + (ri3 < extra ? 1 : 0); for (let k = 0; k < n; k++, i++) rows.push([rest[i].id, '자습', room, k + 1]); });
+    } else if (rest.length) {
       const remain = rooms.slice(ri);
       const need = Math.max(1, Math.ceil(rest.length / cap));
       const use = remain.length >= need ? remain.slice(remain.length - need) : remain.concat(Array.from({ length: need - remain.length }, () => '추가' + (++overflow)));
@@ -846,7 +920,7 @@ const WD = ['일', '월', '화', '수', '목', '금', '토'];
 
 const St = {
   code: null, name: '', token: null, docs: {}, vers: {}, memo: {}, abs: {}, subs: {}, meals: null,
-  tab: 'abs', sub: 'roster', presence: 1, online: false, lastAct: Date.now(),
+  tab: (() => { try { return localStorage.getItem('exam_tab') || 'ht'; } catch (e) { return 'ht'; } })(), mini: { ht: 'abs', sv: 'abs', hq: 'hq' }, sub: 'roster', presence: 1, online: false, lastAct: Date.now(),
   ui: { abs: { mode: 'class' }, hq: {}, seat: { tview: true, list: true }, pt: { per: 2, cls: 'all' }, tt: {}, assign: {}, tr: {}, rl: {}, meal: {}, th: {} },
   pending: {},
 };
@@ -993,7 +1067,7 @@ async function checkVersions(force) {
     if (!changed.length && !removed.length && !force) return;
     removed.forEach(k => { delete St.docs[k]; delete St.vers[k]; });
     if (changed.length) await loadDocs(changed); else St.memo = {};
-    if (St.tab === 'admin') toast('다른 화면에서 설정이 변경되어 새로 불러왔습니다.');
+    if (curView() === 'admin') toast('다른 화면에서 설정이 변경되어 새로 불러왔습니다.');
     render();
   } catch (e) { /* 조용히 무시 */ }
 }
@@ -1019,8 +1093,8 @@ async function enterSchool(code) {
   await Api.rtStart(St.code, {
     onMsg: m => {
       if (m.t === 'doc') checkVersions();
-      if (m.t === 'abs' && m.date) { delete St.abs[m.date]; if (['hq', 'abs', 'seat'].includes(St.tab)) render(); }
-      if (m.t === 'meal') { St.meals = null; if (St.tab === 'meal') render(); }
+      if (m.t === 'abs' && m.date) { delete St.abs[m.date]; if (['hq', 'abs', 'seat'].includes(curView())) render(); }
+      if (m.t === 'meal') { St.meals = null; if (curView() === 'meal') render(); }
     },
     onPresence: n => { St.presence = n; hdr(); },
     onStatus: ok => { St.online = ok; hdr(); },
@@ -1033,7 +1107,7 @@ async function logout(auto) {
   setToken(null);
   await Api.rtStop();
   try { sessionStorage.removeItem('exam_code'); } catch (e) { }
-  Object.assign(St, { code: null, name: '', docs: {}, vers: {}, memo: {}, abs: {}, subs: {}, meals: null, tab: 'abs' });
+  Object.assign(St, { code: null, name: '', docs: {}, vers: {}, memo: {}, abs: {}, subs: {}, meals: null, tab: 'ht' });
   $('#main').classList.add('hidden'); $('#login').classList.remove('hidden');
   renderLogin();
   if (auto) toast(`${IDLE_MIN}분 동안 사용이 없어 자동 로그아웃되었습니다.`);
@@ -1081,14 +1155,34 @@ function hdr() {
     ${St.token ? '<button class="btn sm adminbadge" data-act="admin-logout" title="관리자 모드 종료">관리자 모드 ✕</button>' : ''}
     <button class="btn sm" data-act="logout">로그아웃</button></div>`;
 }
-const TABS = [['abs', '결시 입력'], ['meal', '급식 신청'], ['hq', '고사본부'], ['seat', '자리배치표'], ['cb', '반별 배정표'], ['pt', '개인 시간표'], ['admin', '설정(고사 담당자)']];
+// 큰 탭(역할) → 왼쪽 미니 탭(화면)
+const TABS = [['ht', '담임교사'], ['sv', '감독교사'], ['hq', '고사본부'], ['admin', '설정(고사 담당자)']];
+const MINIS = {
+  ht: [['abs', '결시 입력'], ['meal', '급식 신청'], ['cb', '반별 배정표'], ['pt', '개인 시간표']],
+  sv: [['abs', '결시 입력'], ['seat', '자리배치표']],
+  hq: [['hq', '결시 확인'], ['meal', '급식 신청 확인'], ['seat', '자리배치표'], ['cb', '반별 배정표']],
+};
+// 지금 보이는 화면 키 (abs·meal·hq·seat·cb·pt·admin)
+function curView() {
+  if (!MINIS[St.tab]) return St.tab === 'admin' ? 'admin' : 'abs';
+  const m = St.mini[St.tab]; return MINIS[St.tab].some(x => x[0] === m) ? m : (St.mini[St.tab] = MINIS[St.tab][0][0]);
+}
 function render() {
   if (!St.code) return;
   hdr();
+  if (!TABS.some(t => t[0] === St.tab)) St.tab = 'ht';
   $('#tabs').innerHTML = TABS.map(([k, n]) => `<button class="${St.tab === k ? 'on' : ''}" data-act="tab" data-v="${k}">${n}${k === 'admin' && !St.token ? '<span class="lock">🔒</span>' : ''}</button>`).join('');
-  const v = $('#view');
+  const view = curView(), root = $('#view');
+  // 역할에 따라 화면 방식 고정
+  if (view === 'abs') St.ui.abs.mode = St.tab === 'sv' ? 'room' : 'class';
+  if (view === 'meal') St.ui.meal.mode = St.tab === 'hq' ? 'hq' : 'cls';
+  let v = root;
+  if (MINIS[St.tab]) {
+    root.innerHTML = `<div class="lay"><nav class="mini">${MINIS[St.tab].map(([k, n]) => `<button class="${view === k ? 'on' : ''}" data-act="mini" data-v="${k}">${n}</button>`).join('')}</nav><div class="pane" id="pane"></div></div>`;
+    v = $('#pane');
+  }
   try {
-    ({ abs: vAbs, meal: vMeal, hq: vHq, seat: vSeat, cb: vCb, pt: vPt, admin: vAdmin })[St.tab](v);
+    ({ abs: vAbs, meal: vMeal, hq: vHq, seat: vSeat, cb: vCb, pt: vPt, admin: vAdmin })[view](v);
   } catch (e) { console.error(e); v.innerHTML = `<div class="errbox">화면을 그리는 중 오류가 발생했습니다: ${esc(e.message)}</div>`; }
 }
 function needSetup(v, what) {
@@ -1117,64 +1211,76 @@ function vAbs(v) {
   if (!date) return needSetup(v, `${u.day}일차 날짜가 지정되지 않았습니다.`);
   if (!St.abs[date]) { v.innerHTML = '<div class="card muted">결시 기록을 불러오는 중…</div>'; loadAbs(date).then(render).catch(e => toast(e.message, true)); return; }
   const pers = periodsOfDay(g, u.day);
+  const head = extra => `<div class="card"><div class="row" style="align-items:flex-end">
+      <label class="f">고사 날짜${selectHtml('abs.day', ds.map(d => [d.day, dayLabel(d.day)]), u.day)}</label>
+      <label class="f">학년${selectHtml('abs.grade', gs.map(x => [x, x + '학년']), u.grade)}</label>
+      ${extra}<button class="btn right" data-act="abs-reload">↻ 새로고침</button></div></div>`;
+  const foot = `<p class="small muted">입력 내용은 실시간으로 고사본부에 반영됩니다. 입력이 끝나면 로그아웃해 주세요. ${IDLE_MIN}분간 사용이 없으면 자동 로그아웃됩니다.</p>`;
+  return u.mode === 'room' ? vAbsRoom(v, g, date, pers, head, foot) : vAbsClass(v, g, date, pers, head, foot);
+}
+// 그 학생의 오늘 결시 교시와 사유
+function dayAbsOf(date, sid) { return absOf(date).filter(a => a.sid == sid).sort((a, b) => a.period - b.period); }
+// ---- 담임교사: 교시 선택 없이 하루 단위로 입력·제출
+function vAbsClass(v, g, date, pers, head, foot) {
+  const u = St.ui.abs, cl = classesOf(g); ensure(u, 'cls', cl);
+  const unit = `${g}-${u.cls}`;
+  const list = Core.active(GD(g)).filter(s => s.cls == u.cls).sort((a, b) => a.num - b.num)
+    .map(s => ({ s, ps: studentPeriodsOfDay(g, s.id, u.day), ab: dayAbsOf(date, s.id) }));
+  const dayPers = pers.filter(p => list.some(x => x.ps.includes(p)));
+  const subs = St.subs[date] || [], doneList = dayPers.map(p => subs.find(x => x.period == p && x.unit === unit)).filter(Boolean);
+  const allDone = dayPers.length && doneList.length === dayPers.length;
+  const nAbs = list.filter(x => x.ab.length).length;
+  const sel = `<label class="f">담당 학급${selectHtml('abs.cls', cl.map(c => [c, `${g}학년 ${c}반`]), u.cls)}</label>`;
+  v.innerHTML = head(sel) + (!dayPers.length ? `<div class="warnbox">${g}학년 ${u.cls}반은 이 날 시험이 없습니다.</div>` : `
+  <div class="card">
+    <div class="row" style="margin-bottom:10px"><h3 style="margin:0">결시 학생 선택</h3>
+      <span class="muted small">이름을 누르고 사유를 고르면 <b>오늘 전체 교시(${dayPers.join('·')}교시)</b>에 결시로 저장됩니다</span>
+      <span class="right tag ${nAbs ? 'bad' : ''}">결시 ${nAbs}명</span><span class="tag">재적 ${list.length}명</span></div>
+    <div class="stu-grid">${list.map(({ s, ps, ab }) => {
+      const off = !ps.length, full = ab.length && ab.length === ps.length;
+      const ex = off ? '오늘 시험 없음' : ab.length ? `<b>${full ? '전체 교시' : ab.map(a => a.period).join('·') + '교시'} 결시</b>` : `오늘 ${ps.join('·')}교시`;
+      return `<button class="stu ${ab.length ? 'abs' : ''} ${off ? 'off' : ''}" ${off ? 'disabled' : `data-act="abs-pick" data-sid="${s.id}"`}>
+        <div class="nm"><span class="no">${s.num}</span>${esc(s.name)}${thMark(g, s.id)}</div><div class="ex">${ex}</div>${ab.length ? `<span class="rs">${esc(ab[0].reason)}</span>` : ''}</button>`;
+    }).join('') || '<p class="muted">학생이 없습니다.</p>'}</div>
+    <div class="row" style="margin-top:14px">
+      ${allDone ? `<span class="tag ok">✓ 오늘 전체 교시 제출 완료 ${new Date(doneList[doneList.length - 1].submitted_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</span><button class="btn sm" data-act="abs-submit-day" data-unit="${esc(unit)}" data-done="0">제출 취소</button>`
+        : `<button class="btn pri" data-act="abs-submit-day" data-unit="${esc(unit)}" data-done="1">입력 완료 (고사본부에 제출)</button><span class="small muted">결시가 없어도 눌러 주세요.${doneList.length ? ` (현재 ${doneList.map(x => x.period).join('·')}교시만 제출됨)` : ''}</span>`}
+    </div>
+    <p class="tiny muted" style="margin:6px 0 0">제출한 뒤에도 고칠 수 있습니다. 예) 1·2교시 지각 후 3교시 등교 → 학생 이름을 누르고 <b>3교시 체크를 뺀 뒤</b> 사유를 다시 누르세요. 교시별 수정은 감독교사 화면에서도 할 수 있습니다.</p>
+  </div>`) + foot;
+}
+// ---- 감독교사: 시험실·교시별 입력과 제출
+function vAbsRoom(v, g, date, pers, head, foot) {
+  const u = St.ui.abs;
   const perOpts = pers.map(p => [p, `${p}교시 · ${slotSubjects(g, Core.slotKey(u.day, p)).join(', ') || '자습'}`]);
   if (!pers.length) perOpts.push(['', '시험 없음']);
   ensure(u, 'period', perOpts);
-  const k = Core.slotKey(u.day, u.period);
-  let unitSel = '', list = [], unit = '';
-  const ix = idx(g, k), am = absMap(date, +u.period);
-  if (u.mode === 'room') {
-    const rooms = roomsOf(g, k);
-    ensure(u, 'room', rooms.map(r => r.room));
-    unitSel = `<label class="f">시험실${selectHtml('abs.room', rooms.map(r => [r.room, `${r.room} (${r.n}명)`]), u.room)}</label>`;
-    const a = assignOf(g); const rows = (a && a.slots[k] ? a.slots[k].rows : []).filter(r => r[2] === u.room).sort((x, y) => (x[3] || 0) - (y[3] || 0));
-    list = rows.map(r => { const s = stuMap(g).get(r[0]) || { id: r[0], name: '?', cls: Math.floor(r[0] / 100) % 100, num: r[0] % 100 }; return { s, r: { subj: r[1], room: r[2], seat: r[3] } }; });
-    unit = 'R:' + u.room;
-  } else {
-    const cl = classesOf(g); ensure(u, 'cls', cl);
-    unitSel = `<label class="f">담당 학급${selectHtml('abs.cls', cl.map(c => [c, `${g}학년 ${c}반`]), u.cls)}</label>`;
-    list = Core.active(GD(g)).filter(s => s.cls == u.cls).sort((a, b) => a.num - b.num).map(s => ({ s, r: ix.get(s.id) }));
-    unit = `${g}-${u.cls}`;
-  }
+  const k = Core.slotKey(u.day, u.period), am = absMap(date, +u.period);
+  const rooms = roomsOf(g, k); ensure(u, 'room', rooms.map(r => r.room));
+  const a = assignOf(g); const rows = (a && a.slots[k] ? a.slots[k].rows : []).filter(r => r[2] === u.room).sort((x, y) => (x[3] || 0) - (y[3] || 0));
+  const list = rows.map(r => { const s = stuMap(g).get(r[0]) || { id: r[0], name: '?', cls: Math.floor(r[0] / 100) % 100, num: r[0] % 100 }; return { s, r: { subj: r[1], room: r[2], seat: r[3] } }; });
+  const unit = 'R:' + u.room;
   const subs = (St.subs[date] || []).find(x => x.period == u.period && x.unit === unit);
-  const nAbs = list.filter(x => am.has(x.s.id)).length;
-  const nExam = list.filter(x => x.r && x.r.subj !== '자습').length;
-  // 담임: 그날 이 반 학생이 학교에 있는 교시 전체 (한 번에 제출용)
-  const dayPers = u.mode === 'room' ? [] : pers.filter(p => { const ix2 = idx(g, Core.slotKey(u.day, p)); return list.some(x => ix2.get(x.s.id)); });
-  const dayDone = dayPers.filter(p => (St.subs[date] || []).some(x => x.period == p && x.unit === unit)).length;
-  v.innerHTML = `
+  const nAbs = list.filter(x => am.has(x.s.id)).length, nExam = list.filter(x => x.r.subj !== '자습').length;
+  const sel = `<label class="f">교시${selectHtml('abs.period', perOpts, u.period)}</label>
+    <label class="f">시험실${selectHtml('abs.room', rooms.map(r => [r.room, `${r.room} (${r.n}명)`]), u.room)}</label>`;
+  v.innerHTML = head(sel) + (!pers.length ? `<div class="warnbox">${g}학년은 이 날 시험이 없습니다.</div>` : `
   <div class="card">
-    <div class="row" style="align-items:flex-end">
-      <label class="f">고사 날짜${selectHtml('abs.day', ds.map(d => [d.day, dayLabel(d.day)]), u.day)}</label>
-      <label class="f">학년${selectHtml('abs.grade', gs.map(x => [x, x + '학년']), u.grade)}</label>
-      <label class="f">입력 기준${selectHtml('abs.mode', [['class', '학급별 (담임)'], ['room', '시험실별 (감독)']], u.mode)}</label>
-      ${unitSel}
-      <label class="f">교시${selectHtml('abs.period', perOpts, u.period)}</label>
-      <button class="btn right" data-act="abs-reload">↻ 새로고침</button>
-    </div>
-  </div>
-  ${!pers.length ? `<div class="warnbox">${g}학년은 이 날 시험이 없습니다.</div>` : `
-  <div class="card">
-    <div class="row" style="margin-bottom:10px"><h3 style="margin:0">결시 학생 선택</h3>
-      <span class="muted small">이름을 누르면 결시로 바뀌고 사유를 고릅니다 · 자동 저장</span>
+    <div class="row" style="margin-bottom:10px"><h3 style="margin:0">${esc(u.room || '')} · ${u.period}교시 결시 확인</h3>
+      <span class="muted small">이름을 누르면 이 교시 결시를 입력·수정합니다 · 자동 저장</span>
       <span class="right tag ${nAbs ? 'bad' : ''}">결시 ${nAbs}명</span><span class="tag">응시 대상 ${nExam}명</span></div>
     <div class="stu-grid">${list.map(({ s, r }) => {
-      const a = am.get(s.id), off = !r;
-      const ex = off ? '하교 / 해당 없음' : `${r.subj === '자습' ? '자습' : esc(r.subj)} · ${esc(r.room)} ${r.seat ? r.seat + '번' : ''}`;
-      const lab = (u.mode === 'room' ? `<span class="no">${r && r.seat ? r.seat + '번석' : ''}</span>${esc(s.name)} <span class="no">${s.cls}-${s.num}</span>` : `<span class="no">${s.num}</span>${esc(s.name)}`) + thMark(g, s.id);
-      return `<button class="stu ${a ? 'abs' : ''} ${off ? 'off' : ''} ${r && r.subj === '자습' ? 'study' : ''}" ${off ? 'disabled' : `data-act="abs-pick" data-sid="${s.id}"`}>
-        <div class="nm">${lab}</div><div class="ex">${ex}</div>${a ? `<span class="rs">${esc(a.reason)}</span>` : ''}</button>`;
+      const ab = am.get(s.id);
+      return `<button class="stu ${ab ? 'abs' : ''} ${r.subj === '자습' ? 'study' : ''}" data-act="abs-pick" data-sid="${s.id}">
+        <div class="nm"><span class="no">${r.seat ? r.seat + '번석' : ''}</span>${esc(s.name)} <span class="no">${s.cls}-${s.num}</span>${thMark(g, s.id)}</div>
+        <div class="ex">${r.subj === '자습' ? '자습' : esc(r.subj)}</div>${ab ? `<span class="rs">${esc(ab.reason)}</span>` : ''}</button>`;
     }).join('') || '<p class="muted">학생이 없습니다.</p>'}</div>
     <div class="row" style="margin-top:14px">
       ${subs ? `<span class="tag ok">✓ 제출 완료 ${new Date(subs.submitted_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</span><button class="btn sm" data-act="abs-submit" data-unit="${esc(unit)}" data-done="0">제출 취소</button>`
-        : `<button class="btn pri" data-act="abs-submit" data-unit="${esc(unit)}" data-done="1">입력 완료 (고사본부에 제출)</button><span class="small muted">결시가 없어도 제출을 눌러 확인해 주세요.</span>`}
-      ${u.mode !== 'room' && dayPers.length > 1 ? `<span class="right"></span>${dayDone === dayPers.length
-        ? `<span class="tag ok">✓ 오늘 전체 ${dayPers.length}개 교시 제출 완료</span>`
-        : `<span class="small muted">오늘 ${dayDone}/${dayPers.length}교시 제출</span><button class="btn pri" data-act="abs-submit-day" data-unit="${esc(unit)}">오늘 전체 교시 입력 완료 (${dayPers.join('·')}교시)</button>`}` : ''}
+        : `<button class="btn pri" data-act="abs-submit" data-unit="${esc(unit)}" data-done="1">${u.period}교시 입력 완료 (고사본부에 제출)</button><span class="small muted">결시가 없어도 눌러 주세요.</span>`}
     </div>
-    ${u.mode !== 'room' ? '<p class="tiny muted" style="margin:6px 0 0">제출한 뒤에도 결시는 고칠 수 있습니다. 예) 1·2교시 지각 후 3교시 등교 → 교시에서 3교시를 고르고 학생 이름을 눌러 <b>결시 해제</b> (1·2교시 기록은 그대로 유지)</p>' : ''}
-  </div>`}
-  <p class="small muted">입력 내용은 실시간으로 고사본부에 반영됩니다. 입력이 끝나면 로그아웃해 주세요. ${IDLE_MIN}분간 사용이 없으면 자동 로그아웃됩니다.</p>`;
+    <p class="tiny muted" style="margin:6px 0 0">담임 선생님이 입력한 결시도 여기에 보입니다. 학생이 이 교시에 왔다면 이름을 누르고 <b>결시 해제</b>를 누르세요.</p>
+  </div>`) + foot;
 }
 function todayDay() {
   const t = new Date(), iso = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
@@ -1186,35 +1292,45 @@ function studentPeriodsOfDay(g, sid, day) {
   return periodsOfDay(g, day).filter(p => idx(g, Core.slotKey(day, p)).get(sid));
 }
 function absPop(btn) {
-  const u = St.ui.abs, g = +u.grade, sid = +btn.dataset.sid, day = +u.day, period = +u.period, date = dateOf(day);
-  const cur = absMap(date, period).get(sid);
+  const u = St.ui.abs, g = +u.grade, sid = +btn.dataset.sid, day = +u.day, date = dateOf(day), room = u.mode === 'room';
   const pers = studentPeriodsOfDay(g, sid, day);
-  const absPers = pers.filter(p => absMap(date, p).get(sid));
-  const others = absPers.filter(p => p !== period);
+  const ab = dayAbsOf(date, sid), absPers = ab.map(a => a.period);
+  // 기본 체크: 이미 결시가 있으면 그 교시, 없으면 담임=전체 교시 / 감독=지금 교시
+  const checked = new Set(absPers.length ? absPers : room ? [+u.period] : pers);
+  const curReason = ab.length ? ab[0].reason : '';
   $$('.pop').forEach(p => p.remove());
   const pop = document.createElement('div'); pop.className = 'pop';
   const s = stuMap(g).get(sid);
-  pop.innerHTML = `<div style="font-weight:700;margin-bottom:6px">${esc(s ? `${s.cls}반 ${s.num}번 ${s.name}` : sid)} <span class="muted small">· ${period}교시</span></div>
-    <div class="row">${REASONS.map(r => `<button class="btn sm ${cur && cur.reason === r ? 'pri' : ''}" data-r="${r}">${r}</button>`).join('')}</div>
-    <input type="text" id="pop-memo" placeholder="메모(선택) · 병명 등 민감정보 금지" value="${esc(cur?.memo || '')}" maxlength="60" style="width:100%;margin-top:6px">
-    ${pers.length > 1 ? `<label class="chk small" style="margin-top:8px;background:var(--pri-soft);border-radius:6px;padding:5px 7px;width:100%"><input type="checkbox" id="pop-all"> <b>오늘 전체 교시에 적용</b> <span class="muted">(${pers.join('·')}교시)</span></label>` : ''}
-    ${others.length ? `<div class="tiny muted" style="margin-top:4px">이 학생은 오늘 ${others.join('·')}교시에도 결시로 입력되어 있습니다.</div>` : ''}
-    <div class="row" style="margin-top:6px">${cur ? '<button class="btn sm bad" data-r="">결시 해제</button>' : absPers.length ? `<button class="btn sm bad" data-r="">${absPers.join('·')}교시 결시 해제</button>` : ''}<button class="btn sm" data-r="__close">닫기</button></div>`;
+  pop.innerHTML = `<div style="font-weight:700;margin-bottom:6px">${esc(s ? `${s.cls}반 ${s.num}번 ${s.name}` : sid)}</div>
+    <div class="tiny muted" style="margin-bottom:3px">결시 교시 ${pers.length > 1 ? '<a href="#" data-all="1" style="margin-left:6px">전체</a> · <a href="#" data-all="0">해제</a>' : ''}</div>
+    <div class="pchk">${pers.map(p => { const r = idx(g, Core.slotKey(day, p)).get(sid) || {}; return `<label class="${room && p == u.period ? 'cur' : ''}"><input type="checkbox" data-p="${p}" ${checked.has(p) ? 'checked' : ''}> ${p}교시 <span class="muted">${esc(r.subj === '자습' ? '자습' : r.subj || '')}</span></label>`; }).join('')}</div>
+    <div class="tiny muted" style="margin:6px 0 3px">사유를 누르면 체크한 교시에 저장됩니다</div>
+    <div class="row">${REASONS.map(r => `<button class="btn sm ${curReason === r ? 'pri' : ''}" data-r="${r}">${r}</button>`).join('')}</div>
+    <input type="text" id="pop-memo" placeholder="메모(선택) · 병명 등 민감정보 금지" value="${esc(ab[0]?.memo || '')}" maxlength="60" style="width:100%;margin-top:6px">
+    <div class="row" style="margin-top:8px">${absPers.length ? '<button class="btn sm bad" data-r="">체크한 교시 결시 해제</button>' : ''}<button class="btn sm right" data-r="__close">닫기</button></div>`;
   document.body.appendChild(pop);
-  const rc = btn.getBoundingClientRect();
-  pop.style.left = Math.min(window.innerWidth - 280, Math.max(8, rc.left)) + 'px';
-  pop.style.top = (rc.bottom + 280 > window.innerHeight ? Math.max(8, rc.top - 230) : rc.bottom + 4) + 'px';
+  const rc = btn.getBoundingClientRect(), ph = pop.offsetHeight;
+  pop.style.left = Math.min(window.innerWidth - 290, Math.max(8, rc.left)) + 'px';
+  pop.style.top = (rc.bottom + ph + 8 > window.innerHeight ? Math.max(8, rc.top - ph - 4) : rc.bottom + 4) + 'px';
   pop.addEventListener('click', async e => {
+    const all = e.target.closest('[data-all]');
+    if (all) { e.preventDefault(); $$('input[data-p]', pop).forEach(c => c.checked = all.dataset.all === '1'); return; }
     const b = e.target.closest('[data-r]'); if (!b) return;
     const reason = b.dataset.r; if (reason === '__close') { pop.remove(); return; }
-    const all = !!$('#pop-all', pop)?.checked, memoTxt = $('#pop-memo', pop)?.value || '';
+    const sel = $$('input[data-p]', pop).filter(c => c.checked).map(c => +c.dataset.p);
+    if (!sel.length) return toast('교시를 하나 이상 체크하세요', true);
+    const memoTxt = $('#pop-memo', pop)?.value || '';
     pop.remove();
-    const targets = all ? pers : (reason ? [period] : (cur ? [period] : absPers));
-    await setAbsence(g, sid, day, targets, reason, memoTxt);
+    const nowAbs = dayAbsOf(date, sid).map(a => a.period);   // 누른 시점의 최신 상태 기준
+    if (!reason) return setAbsence(g, sid, day, sel.filter(p => nowAbs.includes(p)), '', '');
+    // 체크한 교시는 결시로, 체크를 뺀 교시의 기존 결시는 해제
+    const clear = nowAbs.filter(p => !sel.includes(p));
+    if (clear.length) await setAbsence(g, sid, day, clear, '', '', true);
+    await setAbsence(g, sid, day, sel, reason, memoTxt);
   });
 }
 // periods: 교시 하나 또는 배열 (여러 교시에 같은 사유로 한 번에 입력/해제)
-async function setAbsence(g, sid, day, periods, reason, memoTxt) {
+async function setAbsence(g, sid, day, periods, reason, memoTxt, quiet) {
   const date = dateOf(day), s = stuMap(g).get(sid) || {};
   const list = Array.isArray(periods) ? periods : [periods];
   try {
@@ -1224,7 +1340,8 @@ async function setAbsence(g, sid, day, periods, reason, memoTxt) {
     }
     await loadAbs(date, true);
     Api.rtSend({ t: 'abs', date });
-    if (list.length > 1) toast(`${s.name || sid}: ${list.join('·')}교시 ${reason ? `결시(${reason}) 입력` : '결시 해제'}`);
+    if (quiet) return;
+    toast(`${s.name || sid}: ${list.join('·')}교시 ${reason ? `결시(${reason})` : '결시 해제'}`);
     render();
   } catch (e) { toast('저장 실패: ' + e.message, true); await loadAbs(date, true).catch(() => { }); render(); }
 }
@@ -1304,7 +1421,7 @@ function vHq(v) {
     <tbody>${abs.map(a => `<tr><td>${a.period}</td><td>${a.sid}</td><td>${esc(a.name)}</td><td>${esc(a.subject)}</td><td>${esc(a.room)}</td><td><span class="tag bad">${esc(a.reason)}</span></td><td>${esc(a.memo || '')}</td><td class="small muted">${new Date(a.updated_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">결시자가 없습니다.</td></tr>'}</tbody></table></div>
   </div>`;
   clearTimeout(hqTimer);
-  hqTimer = setTimeout(async () => { if (St.tab === 'hq' && document.visibilityState === 'visible' && !$('.modal-bg')) { try { await loadAbs(date, true); render(); } catch (e) { } } }, 15000);
+  hqTimer = setTimeout(async () => { if (curView() === 'hq' && document.visibilityState === 'visible' && !$('.modal-bg')) { try { await loadAbs(date, true); render(); } catch (e) { } } }, 15000);
 }
 function absRowsToAoa(list) {
   return [['날짜', '교시', '학년', '반', '번호', '학번', '이름', '과목', '시험실', '사유', '메모'],
@@ -1541,7 +1658,8 @@ function vPt(v) {
    이벤트 (위임)
    ========================================================= */
 const A = {};   // data-act 핸들러
-A.tab = b => { St.tab = b.dataset.v; render(); window.scrollTo(0, 0); };
+A.tab = b => { St.tab = b.dataset.v; try { localStorage.setItem('exam_tab', St.tab); } catch (e) { } render(); window.scrollTo(0, 0); };
+A.mini = b => { St.mini[St.tab] = b.dataset.v; render(); window.scrollTo(0, 0); };
 A.logout = () => logout();
 A.copy = b => { navigator.clipboard?.writeText(b.dataset.v).then(() => toast('복사했습니다')); };
 A['login-create'] = () => renderLogin('create');
@@ -1559,14 +1677,16 @@ A['create-school'] = async () => {
 A['abs-pick'] = b => absPop(b);
 A['abs-reload'] = async () => { const d = dateOf(St.ui.abs.day); try { await loadAbs(d, true); render(); toast('새로 불러왔습니다'); } catch (e) { toast(e.message, true); } };
 A['abs-submit-day'] = async b => {
-  const u = St.ui.abs, g = +u.grade, date = dateOf(u.day), unit = b.dataset.unit;
+  const u = St.ui.abs, g = +u.grade, date = dateOf(u.day), unit = b.dataset.unit, on = b.dataset.done === '1';
   const list = Core.active(GD(g)).filter(s => s.cls == u.cls);
   const pers = periodsOfDay(g, u.day).filter(p => { const ix = idx(g, Core.slotKey(u.day, p)); return list.some(s => ix.get(s.id)); });
-  const todo = pers.filter(p => !(St.subs[date] || []).some(x => x.period == p && x.unit === unit));
-  if (!await confirmBox(`${g}학년 ${u.cls}반 ${fmtDate(date)} ${todo.join('·')}교시를 모두 입력 완료로 제출할까요?\n(제출 후에도 결시는 교시별로 고칠 수 있습니다)`, { ok: '전체 제출' })) return;
+  const has = p => (St.subs[date] || []).some(x => x.period == p && x.unit === unit);
+  const todo = pers.filter(p => on ? !has(p) : has(p));
+  if (!todo.length) return render();
+  if (on && !await confirmBox(`${g}학년 ${u.cls}반 ${fmtDate(date)} 결시 입력을 완료하고 고사본부에 제출할까요?\n(제출 후에도 결시는 고칠 수 있습니다)`, { ok: '제출' })) return;
   try {
-    for (const p of todo) await rpc('mark_submission', { p_date: date, p_period: p, p_unit: unit, p_done: true });
-    await loadAbs(date, true); Api.rtSend({ t: 'abs', date }); render(); toast(`${todo.join('·')}교시를 제출했습니다`);
+    for (const p of todo) await rpc('mark_submission', { p_date: date, p_period: p, p_unit: unit, p_done: on });
+    await loadAbs(date, true); Api.rtSend({ t: 'abs', date }); render(); toast(on ? '고사본부에 제출했습니다' : '제출을 취소했습니다');
   } catch (e) { toast(e.message, true); }
 };
 A['abs-submit'] = async b => {
@@ -1620,7 +1740,7 @@ A['pt-print-cls'] = b => {
   printHtml(ptPages(g, Core.active(GD(g)).filter(x => x.cls === c), u.per), u.paper, 'A4');
 };
 A['go-seats'] = () => { St.tab = 'admin'; St.sub = 'seats'; render(); };
-A['go-meal'] = () => { St.tab = 'meal'; St.ui.meal.mode = 'hq'; St.ui.meal.day = St.ui.hq.day; render(); };
+A['go-meal'] = () => { St.tab = 'hq'; St.mini.hq = 'meal'; St.ui.meal.day = St.ui.hq.day; render(); };
 
 A['cb-print'] = b => {
   const u = St.ui.cb, g = +u.grade, ds = cbDays(g);
@@ -1713,9 +1833,7 @@ function vAdmin(v) {
     const i = $('#adm-pw'); i.focus(); i.addEventListener('keydown', e => { if (e.key === 'Enter') A['admin-login'](); });
     return;
   }
-  v.innerHTML = `<nav class="sub">${SUBS.map(([k, n]) => `<button class="${St.sub === k ? 'on' : ''}" data-act="sub" data-v="${k}">${n}</button>`).join('')}</nav><div id="subv"></div>`;
-  const sv = $('#subv');
-  ({ roster: sRoster, plan: sPlan, tt: sTT, elist: sElist, assign: sAssign, seats: sSeats, transfer: sTransfer, special: sSpecial, manage: sManage })[St.sub](sv);
+  renderAdminBody(v);   // app5.js: 큰 탭 + 미니 탭
 }
 A.sub = b => { St.sub = b.dataset.v; render(); };
 A['admin-login'] = async () => {
@@ -1728,7 +1846,7 @@ A['admin-login'] = async () => {
 };
 A['admin-logout'] = async () => {
   try { await Api.rpc('admin_logout', { p_token: St.token }); } catch (e) { }
-  setToken(null); if (St.tab === 'admin') St.tab = 'abs'; render(); toast('관리자 모드를 종료했습니다');
+  setToken(null); if (St.tab === 'admin') St.tab = 'ht'; render(); toast('관리자 모드를 종료했습니다');
 };
 
 /* =========================================================
@@ -1766,13 +1884,17 @@ function sRoster(v) {
 }
 function nicePreview(p, i) {
   const g = p.gd, info = Core.subjectInfo(g), old = GD(g.grade), hasAssign = !!St.docs['assign:' + g.grade];
-  const byCls = {}; g.students.forEach(s => byCls[s.cls] = (byCls[s.cls] || 0) + 1);
-  const oldIds = new Set(old ? Core.active(old).map(s => s.id) : []), newIds = new Set(g.students.map(s => s.id));
+  const byCls = {}; g.students.filter(s => s.status !== '전출').forEach(s => byCls[s.cls] = (byCls[s.cls] || 0) + 1);
+  const gone = g.students.filter(s => s.status === '전출');
+  const keep = old ? old.students.filter(s => s.status === '전출' && !s.auto && g.students.some(n => n.id === s.id && n.status !== '전출')) : [];
+  const oldIds = new Set(old ? Core.active(old).map(s => s.id) : []), newIds = new Set(Core.active(g).map(s => s.id));
   const added = old ? g.students.filter(s => !oldIds.has(s.id)) : [], removed = old ? Core.active(old).filter(s => !newIds.has(s.id)) : [];
   return `<div class="card" style="border-color:#a7d7d0"><h3>미리보기 · ${g.grade}학년 <span class="muted small">${esc(p.fileName)}</span></h3>
-    <div class="stats"><div class="stat"><div class="v">${Object.keys(byCls).length}</div><div class="k">학급</div></div><div class="stat"><div class="v">${g.students.length}</div><div class="k">학생</div></div>
+    <div class="stats"><div class="stat"><div class="v">${Object.keys(byCls).length}</div><div class="k">학급</div></div><div class="stat"><div class="v">${g.students.length - gone.length}</div><div class="k">응시 대상 학생</div></div>
       <div class="stat"><div class="v">${g.subjects.length}</div><div class="k">개설 과목</div></div><div class="stat"><div class="v">${g.year || '-'}·${g.semester || '-'}</div><div class="k">학년도·학기</div></div></div>
     <p class="small muted">학급별 인원: ${Object.entries(byCls).map(([c, n]) => `${c}반 ${n}명`).join(' · ')}${p.skippedJoint ? ` · 공동교육과정반 ${p.skippedJoint}행 제외` : ''}${p.skippedBad ? ` · 해석 불가 ${p.skippedBad}행 제외` : ''}</p>
+    ${gone.length ? `<div class="okbox"><b>미재학 ${gone.length}명은 응시 대상에서 자동 제외</b>합니다: ${gone.map(s => `${s.id} ${esc(s.name)}`).join(', ')}<br><span class="small">필요하면 등록 후 <b>2. 전입·전출·응시 제외</b>에서 불러올 수 있습니다.</span></div>` : ''}
+    ${keep.length ? `<label class="chk" style="margin:4px 0"><input type="checkbox" id="nice-keep-${i}" checked> 이전에 응시 제외한 학생 ${keep.length}명(${keep.map(s => `${esc(s.name)}·${esc(s.outType || '제외')}`).join(', ')})은 계속 제외</label>` : ''}
     <div style="margin:6px 0">${Object.values(info).map(s => `<span class="chip ${s.type === '선택' ? 'sel' : ''}">${esc(s.name)} <span class="tiny">${s.type} ${s.count}</span></span>`).join('')}</div>
     ${old ? `<div class="warnbox">${g.grade}학년이 이미 등록되어 있습니다(재학 ${oldIds.size}명). 저장하면 명단·수강과목이 새 파일로 <b>교체</b>됩니다. 새로 생긴 학생 ${added.length}명${added.length ? ` (${added.slice(0, 6).map(s => s.name).join(', ')}${added.length > 6 ? ' 외' : ''})` : ''}, 빠진 학생 ${removed.length}명${removed.length ? ` (${removed.slice(0, 6).map(s => s.name).join(', ')}${removed.length > 6 ? ' 외' : ''})` : ''}.
       ${hasAssign ? `<br><label class="chk" style="margin-top:6px"><input type="checkbox" id="nice-fix-${i}" checked> 저장된 시험 배치도 새 명단에 맞게 보정 (빠진 학생 제외, 새 학생 자동 추가)</label>` : ''}</div>` : ''}
@@ -1784,7 +1906,7 @@ function rosterTable(g) {
   const info = Core.subjectInfo(d);
   return `<div class="sp"></div><h4>${g}학년 명단 <span class="muted small">(학생 이름에 마우스를 올리면 선택 과목이 보입니다)</span></h4>
     <div class="tbl-wrap"><table class="t"><thead><tr><th>반</th><th class="num">인원</th><th>학생</th></tr></thead><tbody>
-    ${cl.map(c => { const ss = d.students.filter(s => s.cls === c).sort((a, b) => a.num - b.num); return `<tr><td><b>${c}반</b></td><td class="num">${ss.filter(s => s.status !== '전출').length}</td><td>${ss.map(s => `<span class="tag ${s.status === '전출' ? 'bad' : s.inAt ? 'ok' : ''}" title="${esc((subjOf[s.id] || []).filter(x => info[x] && info[x].type === '선택').join(', '))}" style="margin:1px">${s.num} ${esc(s.name)}${s.status === '전출' ? ' (전출)' : s.inAt ? ' (전입)' : ''}</span>`).join('')}</td></tr>`; }).join('')}
+    ${cl.map(c => { const ss = d.students.filter(s => s.cls === c).sort((a, b) => a.num - b.num); return `<tr><td><b>${c}반</b></td><td class="num">${ss.filter(s => s.status !== '전출').length}</td><td>${ss.map(s => `<span class="tag ${s.status === '전출' ? 'bad' : s.inAt ? 'ok' : ''}" title="${esc((subjOf[s.id] || []).filter(x => info[x] && info[x].type === '선택').join(', '))}" style="margin:1px">${s.num} ${esc(s.name)}${s.status === '전출' ? ` (${esc(s.outType || '전출')})` : s.inAt ? ' (전입)' : ''}</span>`).join('')}</td></tr>`; }).join('')}
     </tbody></table></div>`;
 }
 A['rl-show'] = b => { St.ui.rl.show = St.ui.rl.show == b.dataset.g ? null : b.dataset.g; render(); };
@@ -1793,14 +1915,16 @@ A['nice-save'] = async b => {
   const i = +b.dataset.i, p = St.pending.nice[i], g = p.gd.grade;
   const fix = $('#nice-fix-' + i)?.checked;
   const gd = Object.assign(clone(p.gd), { importedAt: nowIso(), fileName: p.fileName, log: [] });
+  const old = GD(g);
+  if (old && $('#nice-keep-' + i)?.checked) old.students.filter(s => s.status === '전출' && !s.auto).forEach(o => { const n = gd.students.find(x => x.id === o.id); if (n && n.status !== '전출') Object.assign(n, { status: '전출', outAt: o.outAt, outType: o.outType || '응시 제외' }); });
   try {
     await busy('저장 중', async () => {
       await saveDoc('grade:' + g, gd);
       const a = St.docs['assign:' + g];
       if (a && fix) {
-        const A2 = clone(a); const ids = new Set(gd.students.map(s => s.id)); const had = new Set();
+        const A2 = clone(a); const ids = new Set(Core.active(gd).map(s => s.id)); const had = new Set();
         Object.values(A2.slots).forEach(sl => { sl.rows.forEach(r => had.add(r[0])); sl.rows = sl.rows.filter(r => ids.has(r[0])); });
-        gd.students.filter(s => !had.has(s.id)).forEach(s => Core.addStudentToAssign(A2, gd, s, slotsOf(g)));
+        Core.active(gd).filter(s => !had.has(s.id)).forEach(s => Core.addStudentToAssign(A2, gd, s, slotsOf(g)));
         A2.updatedAt = nowIso(); await saveDoc('assign:' + g, A2);
       }
       const pl = clone(P()); let ch = false;
@@ -1809,7 +1933,7 @@ A['nice-save'] = async b => {
       if (!pl.title && gd.year) { pl.title = `${gd.year}학년도 ${gd.semester || ''}학기 지필평가`.replace('  ', ' '); ch = true; }
       if (ch) await saveDoc('plan', pl);
     });
-    St.pending.nice.splice(i, 1); toast(`${g}학년 ${gd.students.length}명을 등록했습니다`); render();
+    St.pending.nice.splice(i, 1); toast(`${g}학년 ${Core.active(gd).length}명을 등록했습니다`); render();
   } catch (e) { toast(e.message, true); }
 };
 A['grade-del'] = async b => {
@@ -1825,12 +1949,14 @@ A['grade-del'] = async b => {
 /* =========================================================
    ② 고사 일정
    ========================================================= */
-function planDraft() { if (!St.ui.planDraft) St.ui.planDraft = clone({ title: P().title, days: days(), periods: P().periods || defaultPeriods(), notice: P().notice ?? DEFAULT_NOTICE }); return St.ui.planDraft; }
+function planDraft() { if (!St.ui.planDraft) St.ui.planDraft = clone({ title: P().title, days: days(), periods: P().periods || defaultPeriods(), notice: P().notice ?? DEFAULT_NOTICE, dayPeriods: P().dayPeriods || {} }); return St.ui.planDraft; }
 function collectPlan() {
   const d = planDraft();
   d.title = $('#pl-title')?.value ?? d.title; d.notice = $('#pl-notice')?.value ?? d.notice;
   d.days = $$('[data-pday]').map(el => ({ day: +el.dataset.pday, date: el.value || null }));
   d.periods = $$('[data-pper]').map(el => ({ p: +el.dataset.pper, start: $(`[data-ps="${el.dataset.pper}"]`).value, end: $(`[data-pe="${el.dataset.pper}"]`).value }));
+  d.dayPeriods = d.dayPeriods || {};
+  $$('[data-pdp]').forEach(el => { const [g, day] = el.dataset.pdp.split('|'); (d.dayPeriods[g] || (d.dayPeriods[g] = {}))[day] = Math.max(0, +el.value || 0); });
   return d;
 }
 function sPlan(v) {
@@ -1839,9 +1965,11 @@ function sPlan(v) {
     <label class="f">시험 이름 (배치표·개인 시간표 제목)<input type="text" id="pl-title" value="${esc(d.title || '')}" placeholder="예: 2026학년도 2학기 1차 지필평가"></label></div>
   <div class="grid2">
     <div class="card"><h3>고사 날짜</h3>
-      <div class="help small">⑤ 시험시간표 파일 업로드에서 <b>학생개인별시험시간표</b> 파일을 올리면 평가일이 자동으로 채워집니다.</div>
-      <table class="t"><thead><tr><th>일차</th><th>날짜</th><th></th></tr></thead><tbody>
-      ${d.days.map(x => `<tr><td><b>${x.day}일차</b></td><td><input type="date" data-pday="${x.day}" value="${esc(x.date || '')}"> <span class="small muted">${x.date ? fmtDate(x.date) : ''}</span></td><td><button class="btn sm bad" data-act="pl-delday" data-d="${x.day}">삭제</button></td></tr>`).join('') || '<tr><td colspan="3" class="muted">날짜가 없습니다.</td></tr>'}
+      <div class="help small">날짜와 함께 <b>학년별로 그날 시험 보는 교시 수</b>를 넣으세요. 시험 시간표 조합 찾기는 이 칸 수만큼 과목을 채웁니다.</div>
+      <table class="t"><thead><tr><th>일차</th><th>날짜</th>${grades().map(g => `<th class="num">${g}학년 교시 수</th>`).join('')}<th></th></tr></thead><tbody>
+      ${d.days.map(x => `<tr><td><b>${x.day}일차</b></td><td><input type="date" data-pday="${x.day}" value="${esc(x.date || '')}"> <span class="small muted">${x.date ? fmtDate(x.date, true) : ''}</span></td>
+        ${grades().map(g => `<td class="num"><input type="number" min="0" max="8" style="width:58px" data-pdp="${g}|${x.day}" value="${((d.dayPeriods || {})[g] || {})[x.day] ?? d.periods.length}"></td>`).join('')}
+        <td><button class="btn sm bad" data-act="pl-delday" data-d="${x.day}">삭제</button></td></tr>`).join('') || '<tr><td colspan="3" class="muted">날짜가 없습니다.</td></tr>'}
       </tbody></table><div class="sp"></div><button class="btn" data-act="pl-addday">+ 일차 추가</button></div>
     <div class="card"><h3>교시 시간</h3>
       <table class="t"><thead><tr><th>교시</th><th>시작</th><th>종료</th></tr></thead><tbody>
@@ -1863,7 +1991,7 @@ A['pl-reset'] = () => { St.ui.planDraft = null; render(); };
 A['pl-save'] = async () => {
   const d = collectPlan();
   const ds = d.days.map(x => x.date).filter(Boolean); if (new Set(ds).size !== ds.length) return toast('같은 날짜가 두 번 들어 있습니다', true);
-  const pl = Object.assign(clone(P()), { title: d.title.trim(), days: d.days.sort((a, b) => a.day - b.day), periods: d.periods, notice: d.notice });
+  const pl = Object.assign(clone(P()), { title: d.title.trim(), days: d.days.sort((a, b) => a.day - b.day), periods: d.periods, notice: d.notice, dayPeriods: d.dayPeriods || {} });
   try { await saveDoc('plan', pl); St.ui.planDraft = null; toast('고사 일정을 저장했습니다'); render(); } catch (e) { toast(e.message, true); }
 };
 
@@ -2019,16 +2147,13 @@ function sAssign(v) {
   const gs = grades(), pe = St.pending.exam;
   const u = St.ui.assign; ensure(u, 'g', gs);
   v.innerHTML = `
-  <div class="card"><h3>A. 학생개인별시험시간표 파일 업로드 <span class="tag ok">권장 · 2·3학년</span></h3>
+  <div class="card"><h3>엑셀 파일로 반영 <span class="tag">선택 사항</span></h3>
+    <div class="okbox" style="margin-bottom:8px">이제는 <b>시험 시간표 작성 → 시험실·좌석 배치 만들기</b>로 엑셀 파일 없이 바로 만들 수 있습니다. 이미 만들어 둔 학생개인별시험시간표 파일이 있을 때만 이 화면을 쓰세요.</div>
     <div class="help">학교에서 쓰는 <b>학생개인별시험시간표</b> 엑셀(배치종합 시트: 시험일·교시·교과·시험실·좌석번호·학번)을 올리면 <b>고사 날짜 · 고사 시간표 · 시험실 · 좌석번호</b>가 그대로 반영됩니다. 파일 속 <b>학생편성현황</b> 시트로 명단도 함께 등록할 수 있습니다.</div>
     <div class="drop" id="drop-exam"><b>학생개인별시험시간표 엑셀</b>을 끌어다 놓거나 클릭해서 선택하세요</div>
   </div>
   ${pe ? examPreview(pe) : ''}
-  ${gs.length ? `<div class="card"><h3>B. 자동 배치 만들기 <span class="tag">파일 없는 학년 · ③ 고사 시간표 입력 후</span></h3>
-    <div class="row">${gs.map(x => `<button class="btn sm ${x === +u.g ? 'pri' : ''}" data-act="as-g" data-g="${x}">${x}학년</button>`).join('')}</div>
-    ${autoPanel(+u.g)}</div>` : ''}
-  ${gs.length ? `<div class="card" id="mv-card"><h3>C. 시험실 직접 고치기 <span class="tag">관리자</span></h3>${movePanel()}</div>` : ''}
-  <div class="card"><h3>D. 현재 배치 상태</h3>${gs.map(statusPanel).join('') || '<p class="muted">등록된 학년이 없습니다.</p>'}</div>`;
+  <div class="card"><h3>현재 배치 상태</h3>${gs.map(statusPanel).join('') || '<p class="muted">등록된 학년이 없습니다.</p>'}</div>`;
   bindDrop('drop-exam', async files => {
     const f = files[0];
     try {
@@ -2053,10 +2178,41 @@ function diffWithCurrent(g, G2) {
     ? `<div class="okbox">지금 저장된 배치와 비교해 <b>바뀌는 학생</b>이 있습니다. [반영하기]를 누르면 적용됩니다.<br><span class="small">${changed.slice(0, 8).join('<br>')}${changed.length > 8 ? `<br>외 ${changed.length - 8}개 교시` : ''}</span></div>`
     : `<div class="warnbox"><b>지금 저장된 시험실·좌석과 똑같은 파일입니다.</b> 시험실을 고쳤는데도 이렇게 나오면, 엑셀의 <b>배치종합</b> 시트가 아직 옛 배정 그대로입니다. 엑셀(매크로 사용)에서 <b>시험실배정</b>을 고친 뒤 배치종합을 다시 만드는 실행 버튼을 누르고, 배치종합 시트에 새 시험실이 보이는지 확인한 다음 저장해서 다시 올리세요.</div>`;
 }
+/* 같은 교시·같은 시험실·같은 좌석에 서로 다른 학생이 배치된 곳 찾기 (학년이 달라도 같은 교실이면 검사)
+   bySlots: { 학년: { 'day-period': { rows: [[학번, 과목, 시험실, 좌석]] } } } */
+function findSeatClashes(bySlots, names) {
+  const seat = new Map(), twice = [], noSeat = [];
+  for (const [g, slots] of Object.entries(bySlots)) for (const [k, sl] of Object.entries(slots || {})) {
+    const seen = new Map();
+    (sl.rows || []).forEach(r => {
+      if (seen.has(r[0])) twice.push({ k, g: +g, sid: r[0], a: seen.get(r[0]), b: r }); else seen.set(r[0], r);
+      if (!r[3]) { if (r[2]) noSeat.push({ k, g: +g, r }); return; }
+      const key = `${k}|${r[2]}|${r[3]}`; if (!seat.has(key)) seat.set(key, []); seat.get(key).push({ g: +g, r });
+    });
+  }
+  const clash = [...seat.entries()].filter(([, l]) => new Set(l.map(x => x.r[0])).size > 1).map(([key, l]) => { const [k, room, no] = key.split('|'); return { k, room, no: +no, list: l }; })
+    .sort((a, b) => a.k.localeCompare(b.k, undefined, { numeric: true }) || natCmp(a.room, b.room) || a.no - b.no);
+  const nm = (g, sid) => (names && names[sid]) || stuName(g, sid) || '';
+  return { clash, twice, noSeat, nm };
+}
+function clashHtml(c, title) {
+  if (!c.clash.length && !c.twice.length) return '';
+  const lab = k => { const { day, period } = Core.parseSlotKey(k); return `${day}일차 ${period}교시`; };
+  return `<div class="errbox"><b>⚠ ${title || '좌석 중복'} ${c.clash.length + c.twice.length}건</b> — 같은 교시에 한 자리에 두 학생 이상이 배치되어 있습니다. 파일을 고쳐 다시 올리거나, 반영 후 <b>시험실 직접 고치기</b>로 정리하세요.
+    <div class="tbl-wrap" style="max-height:240px;margin-top:6px"><table class="t"><thead><tr><th>일시</th><th>시험실</th><th class="num">좌석</th><th>겹친 학생</th></tr></thead><tbody>
+    ${c.clash.map(x => `<tr><td class="nowrap">${lab(x.k)}</td><td>${esc(x.room)}</td><td class="num"><b>${x.no}</b></td><td>${x.list.map(y => `${y.r[0]} ${esc(c.nm(y.g, y.r[0]))} <span class="muted small">(${esc(y.r[1])})</span>`).join(' · ')}</td></tr>`).join('')}
+    ${c.twice.map(x => `<tr><td class="nowrap">${lab(x.k)}</td><td colspan="2" class="small">같은 학생 두 번 배치</td><td>${x.sid} ${esc(c.nm(x.g, x.sid))} — ${esc(x.a[2])} ${x.a[3] || ''}번(${esc(x.a[1])}) / ${esc(x.b[2])} ${x.b[3] || ''}번(${esc(x.b[1])})</td></tr>`).join('')}
+    </tbody></table></div></div>`;
+}
 function examPreview(pe) {
   const r = pe.r;
   return `<div class="card" style="border-color:#a7d7d0"><h3>미리보기 · <span class="muted small">${esc(pe.fileName)}</span></h3>
   ${r.warnings.length ? `<div class="warnbox">${r.warnings.slice(0, 8).map(esc).join('<br>')}${r.warnings.length > 8 ? `<br>외 ${r.warnings.length - 8}건` : ''}</div>` : ''}
+  ${(() => { // 파일 안 + 이미 저장된 다른 학년 배치와 함께 좌석 중복 검사
+    const all = {}, names = {}; Object.entries(r.grades).forEach(([g, G2]) => { all[g] = G2.slots; Object.assign(names, G2.names || {}); });
+    grades().filter(g => !r.grades[g]).forEach(g => { const a = assignOf(g); if (a) all[g] = a.slots; });
+    const c = findSeatClashes(all, names);
+    return clashHtml(c, '좌석 중복') || '<div class="okbox">✓ 좌석 중복 검사: 같은 교시에 한 자리에 두 학생이 배치된 곳이 없습니다.</div>'; })()}
   <p><b>평가일</b>: ${Object.keys(r.dates).length ? Object.entries(r.dates).map(([d, iso]) => `${d}일차 ${fmtDate(iso)}`).join(' · ') : '<span class="muted">찾지 못함 (② 고사 일정에서 직접 입력)</span>'}</p>
   ${Object.entries(r.grades).map(([g, G2]) => {
     g = +g; const gd = GD(g); const nice = r.nice && r.nice.grades.find(x => x.grade === g);
@@ -2154,6 +2310,10 @@ A['as-build'] = async b => {
 A['as-del'] = async b => { const g = +b.dataset.g; if (!await confirmBox(`${g}학년의 저장된 시험 배치를 삭제할까요? 삭제 후에는 고사 시간표 기준 각자교실 배치가 자동 적용됩니다.`, { danger: true, ok: '삭제' })) return; try { await deleteDoc('assign:' + g); render(); } catch (e) { toast(e.message, true); } };
 function statusPanel(g) {
   const st = St.docs['assign:' + g], a = assignOf(g), sl = slotsOf(g), gd = GD(g);
+  // 현재 배치의 좌석 중복 (다른 학년 배치와 같은 교실도 함께 검사)
+  let clashBox = '';
+  if (a) { const all = {}; grades().forEach(x => { const ax = assignOf(x); if (ax) all[x] = ax.slots; }); const c = findSeatClashes(all);
+    c.clash = c.clash.filter(x => x.list.some(y => y.g === g)); c.twice = c.twice.filter(x => x.g === g); clashBox = clashHtml(c, `${g}학년 배치 좌석 중복`); }
   const src = st ? (st.source === 'file' ? `파일: ${esc(st.fileName || '')}` : '자동 배치(저장됨)') : (a ? '시간표 기준 자동 계산(각자교실)' : '없음');
   const warn = [];
   if (st) {
@@ -2164,7 +2324,7 @@ function statusPanel(g) {
     if (lost) warn.push(`수강 과목 시험인데 자리가 없는 경우 ${lost}건 (전입생 추가 또는 배치 재생성 필요)`);
   }
   return `<div style="margin-bottom:12px"><h4>${g}학년 <span class="tag ${st ? 'ok' : a ? '' : 'warn'}">${src}</span> <span class="small muted">${st ? fmtTime(st.updatedAt) : ''}</span></h4>
-    ${warn.length ? `<div class="warnbox">${warn.map(esc).join('<br>')}</div>` : ''}
+    ${warn.length ? `<div class="warnbox">${warn.map(esc).join('<br>')}</div>` : ''}${clashBox}
     ${a ? `<div class="small">${slotKeysOf(g).map(k => { const rs = roomsOf(g, k); return `<div>${slotLabel(k)} · ${esc(slotSubjects(g, k).join(', ') || '자습')} · ${rs.length}실 ${rs.map(r => `${esc(r.room)}(${r.n})`).join(' ')}</div>`; }).join('')}</div>` : ''}</div>`;
 }
 
@@ -2251,7 +2411,7 @@ function sTransfer(v) {
   const outList = Core.active(gd).filter(s => s.cls == u.outCls).sort((a, b) => a.num - b.num);
   const hasAssign = !!St.docs['assign:' + g];
   const log = (gd.log || []).slice().reverse();
-  v.innerHTML = `<div class="card"><div class="row"><h3 style="margin:0">전입 · 전출 관리</h3>${gs.map(x => `<button class="btn sm ${x === g ? 'pri' : ''}" data-act="tr-g" data-g="${x}">${x}학년</button>`).join('')}</div>
+  v.innerHTML = `<div class="card"><div class="row"><h3 style="margin:0">전입 · 전출 · 응시 제외 관리</h3>${gs.map(x => `<button class="btn sm ${x === g ? 'pri' : ''}" data-act="tr-g" data-g="${x}">${x}학년</button>`).join('')}</div>
     <div class="help" style="margin-top:10px">학생편성현황을 다시 올리지 않고도 학기 중 전입생을 추가하거나 전출생을 명단에서 뺄 수 있습니다. 결시 입력·응시자 명단·개인 시간표·자리배치표에 바로 반영됩니다.${hasAssign ? ' 저장된 시험 배치가 있으면 전입생은 같은 반 학생들이 가는 시험실의 <b>마지막 번호 다음 자리</b>에 자동 배치되고, 전출생 자리는 빈자리로 남습니다.' : ''}</div></div>
   <div class="grid2">
     <div class="card"><h3>전입생 추가</h3>
@@ -2264,20 +2424,31 @@ function sTransfer(v) {
       <div>${gd.subjects.map(s => { const i = info[s.name]; return `<label class="chk" style="margin:3px 10px 3px 0"><input type="checkbox" data-trsub="${esc(s.name)}" ${i.type === '공통' ? 'checked' : ''}> ${esc(s.name)} ${typeTag(i.type)}${sched.has(s.name) ? ' <span class="tag warn">시험</span>' : ''}</label>`; }).join('')}</div>
       ${hasAssign ? '<label class="chk" style="margin-top:8px"><input type="checkbox" id="tr-in-as" checked> 저장된 시험 배치에 자리 자동 추가</label>' : ''}
       <div class="row" style="margin-top:10px"><button class="btn pri" data-act="tr-in">전입 등록</button></div></div>
-    <div class="card"><h3>전출 처리</h3>
+    <div class="card"><h3>전출 · 자퇴 · 위탁 (응시 제외)</h3>
       <div class="row" style="align-items:flex-end">
         <label class="f">반${selectHtml('tr.outCls', cl.map(c => [c, c + '반']), u.outCls)}</label>
         <label class="f grow">학생<select id="tr-out-sid">${outList.map(s => `<option value="${s.id}">${s.num}번 ${esc(s.name)}</option>`).join('')}</select></label>
-        <label class="f">전출일<input type="date" id="tr-out-date" value="${todayIso()}"></label></div>
+        <label class="f">구분<select id="tr-out-type"><option>전출</option><option>자퇴</option><option>위탁</option><option>기타(유예 등)</option></select></label>
+        <label class="f">날짜<input type="date" id="tr-out-date" value="${todayIso()}"></label></div>
       ${hasAssign ? '<label class="chk" style="margin-top:8px"><input type="checkbox" id="tr-out-as" checked> 시험 배치에서 제외 (자리는 빈자리로 유지)</label>' : ''}
-      <div class="row" style="margin-top:10px"><button class="btn bad" data-act="tr-out" ${outList.length ? '' : 'disabled'}>전출 처리</button></div>
-      <p class="small muted">전출 처리한 학생은 명단에서 빠지지만 기록은 남아 아래에서 복구할 수 있습니다.</p></div>
+      <div class="row" style="margin-top:10px"><button class="btn bad" data-act="tr-out" ${outList.length ? '' : 'disabled'}>명단에서 제외</button></div>
+      <p class="small muted">제외한 학생은 응시자 명단·시간표·시험실 배치에서 빠지고, 아래 <b>응시 제외 학생</b>에서 언제든 불러올 수 있습니다.</p>
+      <h4 style="margin-top:14px">학번·이름 붙여넣기로 한꺼번에 제외 <span class="muted small">(예: 3학년 위탁생)</span></h4>
+      <textarea id="tr-bulk" rows="3" style="width:100%" placeholder="예) 30105 홍길동, 30212 김철수 · 학번만 또는 이름만도 가능"></textarea>
+      <div class="row" style="margin-top:6px"><button class="btn bad" data-act="tr-bulk">선택한 구분으로 한꺼번에 제외</button></div></div>
+  </div>
+  <div class="card"><h3>응시 제외 학생 (${g}학년 ${gd.students.filter(s => s.status === '전출').length}명)</h3>
+    ${(() => { const out = gd.students.filter(s => s.status === '전출').sort((a, b) => a.id - b.id);
+      if (!out.length) return '<p class="muted small">응시에서 제외된 학생이 없습니다.</p>';
+      const types = [...new Set(out.map(s => s.outType || '전출'))];
+      return `<p class="small muted">학생편성현황의 <b>(미재학)</b> 학생은 올릴 때 자동으로 여기에 들어옵니다. <b>불러오기</b>를 누르면 다시 응시 대상이 됩니다(시험 배치가 있으면 자리도 자동 추가).</p>`
+        + types.map(t => `<div style="margin-top:8px"><b>${esc(t)}</b> <span class="tag">${out.filter(s => (s.outType || '전출') === t).length}명</span><div style="margin-top:4px">${out.filter(s => (s.outType || '전출') === t).map(s => `<span class="th-chip" style="border-color:var(--line);background:#fff">${s.id} ${esc(s.name)}${s.outAt ? ` <span class="tiny muted">${esc(s.outAt)}</span>` : ''}<button data-act="tr-restore" data-sid="${s.id}" title="응시 대상으로 불러오기" style="color:var(--pri);font-weight:700;font-size:12px">불러오기</button></span>`).join('')}</div></div>`).join(''); })()}
   </div>
   <div class="card"><h3>처리 기록 (${g}학년)</h3>
     <div class="tbl-wrap"><table class="t"><thead><tr><th>처리일</th><th>구분</th><th>학번</th><th>이름</th><th>내용</th><th></th></tr></thead><tbody>
-    ${log.map(l => { const s = gd.students.find(x => x.id === l.sid); const canUndo = l.type === '전출' ? s && s.status === '전출' : l.type === '전입' ? !!s && s.inAt === l.date : false;
-      return `<tr><td class="nowrap">${esc(l.date || '')}</td><td><span class="tag ${l.type === '전출' ? 'bad' : l.type === '전입' ? 'ok' : ''}">${esc(l.type)}</span></td><td>${l.sid}</td><td>${esc(l.name)}</td><td class="small">${esc(l.note || '')}</td>
-      <td>${canUndo ? `<button class="btn sm" data-act="tr-undo" data-sid="${l.sid}" data-t="${esc(l.type)}">${l.type === '전출' ? '복구' : '등록 취소'}</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="6" class="muted">기록이 없습니다.</td></tr>'}
+    ${log.map(l => { const s = gd.students.find(x => x.id === l.sid); const isOut = ['전출', '자퇴', '위탁', '기타(유예 등)', '응시 제외'].includes(l.type), canUndo = isOut ? s && s.status === '전출' : l.type === '전입' ? !!s && s.inAt === l.date : false;
+      return `<tr><td class="nowrap">${esc(l.date || '')}</td><td><span class="tag ${isOut ? 'bad' : l.type === '전입' ? 'ok' : ''}">${esc(l.type)}</span></td><td>${l.sid}</td><td>${esc(l.name)}</td><td class="small">${esc(l.note || '')}</td>
+      <td>${canUndo ? `<button class="btn sm" data-act="tr-undo" data-sid="${l.sid}" data-t="${isOut ? '전출' : esc(l.type)}">${isOut ? '복구' : '등록 취소'}</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="6" class="muted">기록이 없습니다.</td></tr>'}
     </tbody></table></div></div>`;
 }
 A['tr-g'] = b => { St.ui.tr.g = b.dataset.g; St.ui.tr.inCls = St.ui.tr.outCls = null; render(); };
@@ -2299,19 +2470,42 @@ A['tr-in'] = async () => {
 A['tr-out'] = async () => {
   const g = +St.ui.tr.g, gd = clone(GD(g)), sid = +$('#tr-out-sid').value, date = $('#tr-out-date').value || todayIso();
   const s = gd.students.find(x => x.id === sid); if (!s) return;
-  if (!await confirmBox(`${s.cls}반 ${s.num}번 ${s.name} 학생을 전출 처리할까요?`, { danger: true, ok: '전출 처리' })) return;
-  s.status = '전출'; s.outAt = date;
+  const typ = $('#tr-out-type')?.value || '전출';
+  if (!await confirmBox(`${s.cls}반 ${s.num}번 ${s.name} 학생을 ${typ} 처리할까요?`, { danger: true, ok: `${typ} 처리` })) return;
+  s.status = '전출'; s.outAt = date; s.outType = typ;
   let A2 = null, note = '';
   if (St.docs['assign:' + g] && $('#tr-out-as')?.checked) { A2 = clone(St.docs['assign:' + g]); const n = Core.removeStudentFromAssign(A2, sid); note = `배치 ${n}칸 제외`; }
-  (gd.log || (gd.log = [])).push({ at: nowIso(), date, type: '전출', sid, name: s.name, note });
-  try { await saveGradeAndAssign(g, gd, A2); toast('전출 처리했습니다'); render(); } catch (e) { toast(e.message, true); }
+  (gd.log || (gd.log = [])).push({ at: nowIso(), date, type: typ, sid, name: s.name, note });
+  try { await saveGradeAndAssign(g, gd, A2); toast(`${typ} 처리했습니다`); render(); } catch (e) { toast(e.message, true); }
+};
+A['tr-restore'] = async b => {
+  const g = +St.ui.tr.g, gd = clone(GD(g)), sid = +b.dataset.sid, s = gd.students.find(x => x.id === sid); if (!s) return;
+  if (!await confirmBox(`${s.id} ${s.name} 학생(${s.outType || '전출'})을 응시 대상으로 불러올까요?`, { ok: '불러오기' })) return;
+  const was = s.outType || '전출'; s.status = '재학'; delete s.outAt; delete s.outType; delete s.auto;
+  let A2 = St.docs['assign:' + g] ? clone(St.docs['assign:' + g]) : null, note = `${was} → 재학`;
+  if (A2) { const ad = Core.addStudentToAssign(A2, gd, s, slotsOf(g)); note += ` · 배치 추가 ${ad.filter(x => x.subj !== '자습').length}칸`; }
+  (gd.log || (gd.log = [])).push({ at: nowIso(), date: todayIso(), type: '복구', sid, name: s.name, note });
+  try { await saveGradeAndAssign(g, gd, A2); toast(`${s.name} 학생을 불러왔습니다`); render(); } catch (e) { toast(e.message, true); }
+};
+A['tr-bulk'] = async () => {
+  const g = +St.ui.tr.g, t = $('#tr-bulk').value, typ = $('#tr-out-type')?.value || '위탁', date = $('#tr-out-date')?.value || todayIso();
+  if (!t.trim()) return;
+  const { found, miss, dup } = parseStudentText(g, t);
+  if (!found.length) return toast(`찾은 학생이 없습니다${miss.length ? ` (못 찾음: ${miss.join(', ')})` : ''}`, true);
+  const ok = await modal('응시 제외 확인', `<p><b>${g}학년 ${found.length}명</b>을 <b>${esc(typ)}</b>(으)로 응시 제외합니다.</p><div>${found.map(s => `<span class="th-chip" style="border-color:var(--line);background:#fff">${s.id} ${esc(s.name)}</span>`).join('')}</div>
+    ${miss.length ? `<p class="small" style="color:var(--bad)">못 찾음: ${esc(miss.join(', '))}</p>` : ''}${dup.length ? `<p class="small" style="color:var(--warn)">동명이인이라 건너뜀(학번으로 다시 입력): ${esc(dup.join(', '))}</p>` : ''}`, { ok: '제외', danger: true });
+  if (!ok) return;
+  const gd = clone(GD(g)); let A2 = St.docs['assign:' + g] ? clone(St.docs['assign:' + g]) : null;
+  found.forEach(f => { const s = gd.students.find(x => x.id === f.id); s.status = '전출'; s.outAt = date; s.outType = typ; if (A2) Core.removeStudentFromAssign(A2, s.id);
+    (gd.log || (gd.log = [])).push({ at: nowIso(), date, type: typ, sid: s.id, name: s.name, note: '한꺼번에 제외' }); });
+  try { await saveGradeAndAssign(g, gd, A2); $('#tr-bulk').value = ''; toast(`${found.length}명을 응시 제외했습니다`); render(); } catch (e) { toast(e.message, true); }
 };
 A['tr-undo'] = async b => {
   const g = +St.ui.tr.g, gd = clone(GD(g)), sid = +b.dataset.sid, s = gd.students.find(x => x.id === sid); if (!s) return;
   let A2 = St.docs['assign:' + g] ? clone(St.docs['assign:' + g]) : null;
   if (b.dataset.t === '전출') {
     if (!await confirmBox(`${s.name} 학생을 재학으로 복구할까요?`)) return;
-    s.status = '재학'; delete s.outAt; if (A2) Core.addStudentToAssign(A2, gd, s, slotsOf(g));
+    s.status = '재학'; delete s.outAt; delete s.outType; delete s.auto; if (A2) Core.addStudentToAssign(A2, gd, s, slotsOf(g));
     gd.log.push({ at: nowIso(), date: todayIso(), type: '복구', sid, name: s.name, note: '전출 취소' });
   } else {
     if (!await confirmBox(`${s.name} 학생의 전입 등록을 취소(명단에서 완전히 삭제)할까요?`, { danger: true, ok: '등록 취소' })) return;
@@ -2793,7 +2987,7 @@ function vMeal(v) {
   if (!ds.length || !gs.length) return needSetup(v, '고사 일정(날짜) 또는 학생 명단이 등록되지 않았습니다.');
   if (!St.meals) { v.innerHTML = '<div class="card muted">급식 신청 내역을 불러오는 중…</div>'; loadMeals().then(render).catch(e => { toast(e.message, true); v.innerHTML = `<div class="errbox">불러오지 못했습니다: ${esc(e.message)}<br><span class="small">서버 SQL(supabase_setup.sql)을 최신 버전으로 다시 실행했는지 확인하세요.</span></div>`; }); return; }
   const u = St.ui.meal; ensure(u, 'mode', ['cls', 'hq'], 'cls');
-  const modeSel = `<label class="f">보기${selectHtml('meal.mode', [['cls', '학급별 신청 (담임)'], ['hq', '신청 현황 · 시청각실 출석부 (고사본부)']], u.mode)}</label>`;
+  const modeSel = '';   // 담임교사 → 학급별 신청, 고사본부 → 신청 현황 (탭으로 구분)
   return u.mode === 'hq' ? vMealHq(v, modeSel) : vMealCls(v, modeSel);
 }
 function vMealCls(v, modeSel) {
@@ -2921,7 +3115,7 @@ function vMealHq(v, modeSel) {
   ${list.some(x => x.ep === 0) ? '<div class="warnbox">그날 시험이 없는 학생이 신청되어 있습니다(“시험 없음” 묶음). 담임 선생님께 확인하세요.</div>' : ''}
   ${mealRosterHtml(date, day, u.hg, !!u.onlyWait, false)}`;
   clearTimeout(mealTimer);
-  mealTimer = setTimeout(async () => { if (St.tab === 'meal' && St.ui.meal.mode === 'hq' && document.visibilityState === 'visible' && !$('.modal-bg')) { try { await loadMeals(true); render(); } catch (e) { } } }, 20000);
+  mealTimer = setTimeout(async () => { if (curView() === 'meal' && St.tab === 'hq' && document.visibilityState === 'visible' && !$('.modal-bg')) { try { await loadMeals(true); render(); } catch (e) { } } }, 20000);
 }
 let mealTimer = null;
 A['meal-print'] = () => { const u = St.ui.meal, day = +u.day; printHtml(mealRosterHtml(dateOf(day), day, u.hg, !!u.onlyWait, true), u.paper, 'A4'); };
@@ -3068,6 +3262,477 @@ A['mv-apply'] = async () => {
   A2.updatedAt = nowIso();
   try { await saveDoc('assign:' + g, A2); toast(`${total}명을 ${u.to}로 옮겼습니다`); u.from = u.to; u.to = ''; render(); } catch (e) { toast(e.message, true); }
 };
+
+</script>
+<script>
+/* ===== app5.js : 설정 화면 구성(큰 탭+미니 탭) · 시험 시간표 작성(조합 탐색) · 시험실·좌석 배치 만들기 ===== */
+'use strict';
+
+/* =========================================================
+   설정 화면 구성
+   ========================================================= */
+const AGROUPS = [
+  ['roster', '응시자 명단 관리', [['roster', '1. 학생 편성 업로드'], ['transfer', '2. 전입·전출·응시 제외'], ['special', '3. 통합지원반'], ['elist', '4. 응시자 명단 확인']]],
+  ['sched', '시험 시간표 작성', [['plan', '1. 시험 일정'], ['sxsub', '2. 시험 과목 선택'], ['sxbun', '3. 묶음 과목'], ['sxcon', '4. 과목별 제약'], ['sxrun', '5. 가중치·조합 찾기'], ['tt', '6. 시간표 확인·직접 편집'], ['sxlist', '7. 학생별 응시 부담 명단']]],
+  ['place', '시험실·좌석 배치', [['place', '1. 배치 만들기'], ['move', '2. 시험실 직접 고치기'], ['seats', '3. 교실 좌석 (열별 인원)'], ['assign', '엑셀 파일로 반영 (선택)']]],
+  ['manage', '관리', [['manage', '관리 · 백업']]],
+];
+const ADMIN_VIEWS = () => ({ roster: sRoster, plan: sPlan, tt: sTT, elist: sElist, assign: sAssign, seats: sSeats, transfer: sTransfer, special: sSpecial, manage: sManage, sxsub: sxSub, sxbun: sxBun, sxcon: sxCon, sxrun: sxRun, sxlist: sxList, place: sPlace, move: sMove });
+const groupOfSub = s => (AGROUPS.find(g => g[2].some(x => x[0] === s)) || AGROUPS[0]);
+function renderAdminBody(v) {
+  if (!ADMIN_VIEWS()[St.sub]) St.sub = 'roster';
+  const grp = groupOfSub(St.sub);
+  v.innerHTML = `<nav class="sub">${AGROUPS.map(([k, n, m]) => `<button class="${grp[0] === k ? 'on' : ''}" data-act="sub" data-v="${m[0][0]}" data-grp="${k}">${n}</button>`).join('')}</nav>
+    <div class="lay"><nav class="mini">${grp[2].map(([k, n]) => `<button class="${St.sub === k ? 'on' : ''}" data-act="sub" data-v="${k}">${n}</button>`).join('')}</nav><div class="pane" id="subv"></div></div>`;
+  ADMIN_VIEWS()[St.sub]($('#subv'));
+}
+// 큰 탭을 누르면 그 묶음에서 마지막으로 보던 화면으로
+St.ui.lastSub = St.ui.lastSub || {};
+A.sub = b => {
+  const grp = b.dataset.grp;
+  St.sub = grp ? (St.ui.lastSub[grp] || b.dataset.v) : b.dataset.v;
+  St.ui.lastSub[groupOfSub(St.sub)[0]] = St.sub;
+  render(); window.scrollTo(0, 0);
+};
+function sMove(v) { v.innerHTML = grades().length ? `<div class="card" id="mv-card"><h3>시험실 직접 고치기</h3>${movePanel()}</div>` : '<div class="card muted">먼저 학생 편성을 등록하세요.</div>'; }
+
+/* =========================================================
+   시험 시간표 작성 — 상태
+   ========================================================= */
+const SX_DEFAULT = () => ({ exam: [], bundles: [], cons: [], w: [1, 0, 0, 1, 10000], noFour: true });
+function sxState(g) {
+  const U = St.ui.sx || (St.ui.sx = { d: {}, res: {} });
+  if (!U.d[g]) U.d[g] = Object.assign(SX_DEFAULT(), clone(St.docs['sched:' + g] || {}));
+  return U.d[g];
+}
+let sxTimer = null;
+function sxSave(g) {
+  clearTimeout(sxTimer);
+  sxTimer = setTimeout(async () => { try { await saveDoc('sched:' + g, Object.assign(clone(sxState(g)), { updatedAt: nowIso() })); } catch (e) { toast('조건 저장 실패: ' + e.message, true); } }, 600);
+  if (St.ui.sx.res) delete St.ui.sx.res[g];   // 조건이 바뀌면 이전 탐색 결과는 무효
+}
+// 학년 데이터: 학생·과목·수강 매트릭스
+function sxData(g) {
+  return memo('sx' + g, () => {
+    const gd = GD(g), info = Core.subjectInfo(gd);
+    const studs = Core.active(gd).slice().sort((a, b) => a.id - b.id), idx = new Map(studs.map((s, i) => [s.id, i]));
+    const subs = Object.values(info).filter(s => !/^\(공동\)/.test(s.name)).sort((a, b) => b.count - a.count || natCmp(a.name, b.name));
+    const sets = {}; subs.forEach(s => sets[s.name] = new Set(s.ids));
+    return { gd, info, studs, idx, subs, sets, common: new Set(subs.filter(s => s.type === '공통').map(s => s.name)), N: studs.length };
+  });
+}
+// 시험 일차별 교시 수 (시험 일정에서 학년별로 입력)
+function sxDays(g) {
+  const pl = P(), dp = (pl.dayPeriods || {})[g] || {}, def = (pl.periods || []).length || 4;
+  return days().map(d => ({ day: d.day, date: d.date, n: +(dp[d.day] ?? def) || 0 }));
+}
+function sxUnits(g) {
+  const S = sxState(g), ex = new Set(S.exam), seen = new Set(), units = [];
+  for (const s of S.exam) {
+    const bi = S.bundles.findIndex(b => b.includes(s));
+    if (bi >= 0) { if (seen.has(bi)) continue; seen.add(bi); const subs = S.bundles[bi].filter(x => ex.has(x)); if (subs.length) units.push({ name: subs.join(' + '), subjects: subs }); }
+    else units.push({ name: s, subjects: [s] });
+  }
+  return units;
+}
+function sxMasks(g, units) {
+  const D = sxData(g);
+  return units.map(u => { const m = new Uint8Array(D.N); u.subjects.forEach(s => (D.sets[s] || new Set()).forEach(id => { const i = D.idx.get(id); if (i != null) m[i] = 1; })); return m; });
+}
+function sxBundleCovers(g, b) { const D = sxData(g), c = new Set(); b.forEach(s => (D.sets[s] || []).forEach(id => c.add(id))); return D.N > 0 && c.size >= D.N; }
+// 공통과목·공통 묶음 → 1교시 전용 자동 제약
+function sxSyncAuto(g) {
+  const S = sxState(g), D = sxData(g), ex = new Set(S.exam), targets = new Set();
+  S.exam.forEach(s => { if (D.common.has(s)) targets.add(s); });
+  S.bundles.forEach(b => { const f = b.filter(s => ex.has(s)); if (f.length >= 2 && sxBundleCovers(g, f)) f.forEach(s => targets.add(s)); });
+  S.cons = S.cons.filter(c => !(c.auto && c.type === 'period_only' && c.period === 1) || targets.has(c.subject));
+  targets.forEach(s => { if (!S.cons.some(c => c.subject === s && c.type === 'period_only' && c.period === 1)) S.cons.push({ subject: s, type: 'period_only', period: 1, auto: true }); });
+  S.cons = S.cons.filter(c => !c.subject || ex.has(c.subject));
+  S.bundles = S.bundles.map(b => b.filter(s => ex.has(s)));
+}
+function sxUnitCons(g, units) {
+  const S = sxState(g), cons = units.map(() => ({ forbid: new Set(), fix: null, pOnly: null }));
+  S.cons.forEach(c => { if (!c.subject) return; units.forEach((u, i) => { if (!u.subjects.includes(c.subject)) return;
+    if (c.type === 'forbid_day' && c.day) cons[i].forbid.add(+c.day); else if (c.type === 'fix_day' && c.day) cons[i].fix = +c.day; else if (c.type === 'period_only' && c.period) cons[i].pOnly = +c.period; }); });
+  return cons;
+}
+
+/* ---------- 공통 머리말 (학년 선택 + 슬롯/유닛 요약) ---------- */
+function sxHead(title, help) {
+  const gs = grades(); const U = St.ui.sx || (St.ui.sx = { d: {}, res: {} }); ensure(U, 'g', gs.map(String)); const g = +U.g;
+  const dd = sxDays(g), slots = dd.reduce((a, d) => a + d.n, 0), units = sxUnits(g).length;
+  return { g, html: `<div class="card"><div class="row"><h3 style="margin:0">${title}</h3>${gs.map(x => `<button class="btn sm ${x === g ? 'pri' : ''}" data-act="sx-g" data-g="${x}">${x}학년</button>`).join('')}
+      <span class="right tag ${slots && slots === units ? 'ok' : 'warn'}">시험 칸 ${slots}개 · 채울 과목(묶음) ${units}개</span></div>
+      ${help ? `<div class="help" style="margin-top:10px">${help}</div>` : ''}</div>` };
+}
+A['sx-g'] = b => { St.ui.sx.g = b.dataset.g; render(); };
+function sxGuard(v) {
+  if (!grades().length) { v.innerHTML = '<div class="card muted">먼저 <b>응시자 명단 관리 → 학생 편성 업로드</b>를 하세요.</div>'; return true; }
+  if (!days().length) { v.innerHTML = '<div class="card muted">먼저 <b>1. 시험 일정</b>에서 시험 날짜와 학년별 교시 수를 입력하세요.</div>'; return true; }
+  return false;
+}
+
+/* ---------- 2. 시험 과목 선택 ---------- */
+function sxSub(v) {
+  if (sxGuard(v)) return;
+  const h = sxHead('시험 과목 선택', '시험을 보는 과목만 체크하세요. 숫자는 수강 학생 수입니다. 공동교육과정 (공동) 과목은 자동으로 빠집니다. <b>공통</b>(전원 수강) 과목은 자동으로 <b>1교시 전용</b>이 됩니다.');
+  const g = h.g, S = sxState(g), D = sxData(g), ex = new Set(S.exam);
+  v.innerHTML = h.html + `<div class="card"><div class="row" style="margin-bottom:10px"><button class="btn sm" data-act="sx-all" data-on="1">모두 선택</button><button class="btn sm" data-act="sx-all" data-on="0">모두 해제</button><span class="right small muted">선택 ${S.exam.length}과목</span></div>
+    <div class="sx-grid">${D.subs.map(s => `<label class="sx-subj ${ex.has(s.name) ? 'on' : ''}"><input type="checkbox" data-sxc="exam" data-s="${esc(s.name)}" ${ex.has(s.name) ? 'checked' : ''}><span class="n">${esc(s.name)}${s.type === '공통' ? ' <span class="tag com">공통</span>' : ''}</span><span class="c">${s.count}</span></label>`).join('')}</div></div>`;
+}
+A['sx-all'] = b => { const g = +St.ui.sx.g, S = sxState(g); S.exam = b.dataset.on === '1' ? sxData(g).subs.map(s => s.name) : []; sxSyncAuto(g); sxSave(g); render(); };
+
+/* ---------- 3. 묶음 과목 ---------- */
+function sxBun(v) {
+  if (sxGuard(v)) return;
+  const h = sxHead('묶음 과목 (같은 시간에 동시 진행)', '예: 화법과 작문 + 언어와 매체. 같은 교시에 함께 볼 과목을 눌러 묶음에 넣으세요(다시 누르면 빠집니다). 묶음은 시간표에서 <b>한 칸</b>을 차지합니다.');
+  const g = h.g, S = sxState(g), D = sxData(g), list = S.exam.slice().sort(natCmp);
+  v.innerHTML = h.html + `<div class="card">${S.bundles.map((b, i) => {
+      const f = b.filter(s => S.exam.includes(s)), com = f.length >= 2 && sxBundleCovers(g, f);
+      return `<div class="sx-bun"><div class="row"><span class="tag">묶음 ${i + 1}</span><b>${f.map(esc).join(' + ') || '<span class="muted">아직 과목을 고르지 않음</span>'}</b>${com ? '<span class="tag com">공통 묶음 · 1교시 전용</span>' : ''}<span class="right"></span><button class="btn sm bad" data-act="sx-bdel" data-i="${i}">삭제</button></div>
+        <div style="margin-top:6px">${list.map(s => { const other = S.bundles.some((x, j) => j !== i && x.includes(s)); return `<button class="chip sx-chip ${b.includes(s) ? 'on' : ''}" ${other ? 'disabled' : ''} data-act="sx-btog" data-i="${i}" data-s="${esc(s)}">${esc(s)} <span class="tiny">${D.info[s] ? D.info[s].count : ''}</span></button>`; }).join('') || '<span class="muted small">먼저 시험 과목을 선택하세요.</span>'}</div></div>`;
+    }).join('') || '<p class="muted">묶음이 없습니다. 필요하면 추가하세요.</p>'}
+    <button class="btn" data-act="sx-badd">+ 묶음 추가</button></div>`;
+}
+A['sx-badd'] = () => { const g = +St.ui.sx.g; sxState(g).bundles.push([]); sxSave(g); render(); };
+A['sx-bdel'] = b => { const g = +St.ui.sx.g; sxState(g).bundles.splice(+b.dataset.i, 1); sxSyncAuto(g); sxSave(g); render(); };
+A['sx-btog'] = b => { const g = +St.ui.sx.g, S = sxState(g), i = +b.dataset.i, s = b.dataset.s; S.bundles[i] = S.bundles[i].includes(s) ? S.bundles[i].filter(x => x !== s) : [...S.bundles[i], s]; sxSyncAuto(g); sxSave(g); render(); };
+
+/* ---------- 4. 과목별 제약 ---------- */
+function sxCon(v) {
+  if (sxGuard(v)) return;
+  const h = sxHead('과목별 제약 조건', '예: 서술형 과목 → 마지막 날 불가, 특정 과목 1일차 고정, 특정 교시 전용.');
+  const g = h.g, S = sxState(g), nd = sxDays(g).length, ex = S.exam.slice().sort(natCmp);
+  const auto = S.cons.filter(c => c.auto), man = S.cons.map((c, i) => [c, i]).filter(([c]) => !c.auto);
+  v.innerHTML = h.html + `<div class="card">
+    ${auto.length ? `<div class="okbox"><b>자동 적용:</b> 공통과목·공통 묶음은 1교시 전용 — ${[...new Set(auto.map(c => c.subject))].map(esc).join(', ')}</div>` : ''}
+    <table class="t" style="margin-top:8px"><thead><tr><th>과목</th><th>조건</th><th>값</th><th></th></tr></thead><tbody>
+    ${man.map(([c, i]) => `<tr><td><select data-sxc="con" data-i="${i}" data-f="subject"><option value="">— 과목 —</option>${ex.map(s => `<option ${c.subject === s ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></td>
+      <td><select data-sxc="con" data-i="${i}" data-f="type">${[['fix_day', '특정 일차 고정'], ['forbid_day', '특정 일차 불가'], ['period_only', '특정 교시 전용']].map(([k, n]) => `<option value="${k}" ${c.type === k ? 'selected' : ''}>${n}</option>`).join('')}</select></td>
+      <td>${c.type === 'period_only' ? `<input type="number" min="1" max="8" value="${c.period || 1}" data-sxc="con" data-i="${i}" data-f="period" style="width:64px"> 교시` : `<input type="number" min="1" max="${nd}" value="${c.day || 1}" data-sxc="con" data-i="${i}" data-f="day" style="width:64px"> 일차`}</td>
+      <td><button class="btn sm bad" data-act="sx-cdel" data-i="${i}">삭제</button></td></tr>`).join('') || '<tr><td colspan="4" class="muted">추가 제약이 없습니다.</td></tr>'}
+    </tbody></table><div class="sp"></div><button class="btn" data-act="sx-cadd">+ 제약 추가</button></div>`;
+}
+A['sx-cadd'] = () => { const g = +St.ui.sx.g; sxState(g).cons.push({ subject: '', type: 'forbid_day', day: sxDays(g).length }); sxSave(g); render(); };
+A['sx-cdel'] = b => { const g = +St.ui.sx.g; sxState(g).cons.splice(+b.dataset.i, 1); sxSave(g); render(); };
+
+/* ---------- 5. 가중치 · 조합 찾기 ---------- */
+const SX_W = [[4, '전과목(4과목) 응시자'], [3, '3과목 응시자'], [0, '0과목 응시자 (그날 시험 없음)'], [1, '1과목 응시자'], [2, '2과목 응시자']];
+function sxRun(v) {
+  if (sxGuard(v)) return;
+  const h = sxHead('가중치 · 조합 찾기', '하루에 N과목을 보는 학생 수에 가중치를 곱해 더한 값이 <b>점수</b>입니다. <b>점수가 낮을수록 좋은 조합</b>이며, 상위 3개를 찾아 보여 줍니다. 결과에서 칸을 눌러 바꿔 가며 다듬은 뒤 <b>이 시간표로 확정</b>하세요.');
+  const g = h.g, S = sxState(g), R = (St.ui.sx.res || {})[g];
+  v.innerHTML = h.html + `<div class="card"><div class="sx-w">${SX_W.map(([k, n]) => `<label><span>${n}</span><input type="number" min="0" max="100000" value="${S.w[k]}" data-sxc="w" data-k="${k}"></label>`).join('')}</div>
+    <label class="chk" style="margin-top:8px"><input type="checkbox" data-sxc="noFour" ${S.noFour ? 'checked' : ''}> 하루 4과목 응시 학생이 0명인 조합만 찾기</label>
+    <div class="row" style="margin-top:12px"><button class="btn pri" data-act="sx-run">▶ 상위 3개 조합 찾기</button><span class="small muted" id="sx-status">${R ? esc(R.msg || '') : ''}</span></div></div>
+    ${R && R.top ? R.top.map((c, i) => sxComboHtml(g, R, c, i)).join('') : ''}`;
+}
+A['sx-run'] = () => {
+  const g = +St.ui.sx.g, S = sxState(g), units = sxUnits(g), dd = sxDays(g), slotsPer = dd.map(d => d.n), total = slotsPer.reduce((a, b) => a + b, 0);
+  if (!units.length) return toast('시험 과목을 먼저 선택하세요', true);
+  if (total !== units.length) return toast(`시험 칸(${total}개)과 과목·묶음 수(${units.length}개)가 같아야 합니다. 시험 일정의 교시 수나 묶음을 조정하세요.`, true);
+  $('#sx-status').textContent = '탐색 중… (과목이 많으면 수십 초 걸릴 수 있습니다)';
+  setTimeout(() => {
+    const t0 = performance.now(), masks = sxMasks(g, units), cons = sxUnitCons(g, units);
+    const r = sxSearch(sxData(g).N, units, masks, cons, slotsPer, S.w, S.noFour, 3);
+    const ms = Math.round(performance.now() - t0);
+    const R = { units, cons, masks, slotsPer, dd };
+    if (r.error) R.msg = r.error;
+    else if (!r.top.length) R.msg = `조건을 만족하는 조합이 없습니다 (탐색 ${r.nodes.toLocaleString()}회 · ${ms}ms). 제약을 완화하거나 '4과목 0명' 조건을 끄고 다시 찾아보세요.`;
+    else {
+      R.msg = `완료 · 탐색 ${r.nodes.toLocaleString()}회 · ${ms}ms${r.truncated ? ' (탐색 한도 도달 — 최적이 아닐 수 있음)' : ''}`;
+      R.top = r.top.map(t => { const dpu = t.assignment.map((uids, d) => sxAssignPeriods(uids, cons, slotsPer[d])); return { base: dpu.map(a => a.slice()), dpu, sel: null }; });
+    }
+    St.ui.sx.res[g] = R; render();
+  }, 30);
+};
+// 조합 탐색 (일자별 과목 집합 백트래킹 + 동치 조합 제거)
+function sxSearch(N, units, masks, cons, slotsPer, w, noFour, topK) {
+  const days = slotsPer.length, U = units.length;
+  const okDay = (ui, d) => !(cons[ui].fix && cons[ui].fix !== d) && !cons[ui].forbid.has(d) && !(cons[ui].pOnly && cons[ui].pOnly > slotsPer[d - 1]);
+  const cand = []; for (let d = 1; d <= days; d++) cand.push(new Set([...Array(U).keys()].filter(ui => okDay(ui, d))));
+  for (let ui = 0; ui < U; ui++) { if (cons[ui].fix) for (let d = 1; d <= days; d++) if (d !== cons[ui].fix) cand[d - 1].delete(ui); if (!cand.some(s => s.has(ui))) return { error: `"${units[ui].name}"이(가) 들어갈 수 있는 날이 없습니다. 제약을 확인하세요.` }; }
+  const POOL = Math.max(200, topK * 50), top = [], asg = Array.from({ length: days }, () => []), used = new Uint8Array(U);
+  let nodes = 0; const LIMIT = 5e6;
+  const evalDay = uids => { const s = new Uint8Array(N); uids.forEach(u => { const m = masks[u]; for (let i = 0; i < N; i++) s[i] += m[i]; }); const c = [0, 0, 0, 0, 0]; let full = 0; for (let i = 0; i < N; i++) { const x = s[i]; if (x <= 4) c[x]++; if (x >= 4) full++; } return { c, full, sum: w[0] * c[0] + w[1] * c[1] + w[2] * c[2] + w[3] * c[3] + w[4] * c[4] }; };
+  const push = (score, a) => { if (top.length < POOL) { top.push({ score, assignment: a.map(x => x.slice()) }); top.sort((x, y) => x.score - y.score); } else if (score < top[top.length - 1].score) { top[top.length - 1] = { score, assignment: a.map(x => x.slice()) }; top.sort((x, y) => x.score - y.score); } };
+  const pOk = uids => { const seen = new Set(); for (const u of uids) { const p = cons[u].pOnly; if (p) { if (seen.has(p)) return false; seen.add(p); } } return true; };
+  function chooseK(arr, k, st, cur, cb) { if (cur.length === k) return cb(cur); if (nodes > LIMIT || arr.length - st < k - cur.length) return; for (let i = st; i < arr.length; i++) { cur.push(arr[i]); chooseK(arr, k, i + 1, cur, cb); cur.pop(); } }
+  function bt(d, score, full) {
+    if (++nodes > LIMIT) return;
+    if (d === days) { for (let u = 0; u < U; u++) if (!used[u]) return; if (noFour && full) return; push(score, asg); return; }
+    const c = [...cand[d]].filter(u => !used[u]), must = c.filter(u => cons[u].fix === d + 1), others = c.filter(u => !must.includes(u)), need = slotsPer[d] - must.length;
+    if (need < 0 || need > others.length) return;
+    const worst = top.length >= POOL ? top[top.length - 1].score : Infinity;
+    chooseK(others, need, 0, [], ch => {
+      const du = [...must, ...ch]; if (!pOk(du)) return;
+      const e = evalDay(du), ns = score + e.sum, nf = full + e.full;
+      if (noFour && nf) return; if (ns >= worst) return;
+      asg[d] = du; du.forEach(u => used[u]++); bt(d + 1, ns, nf); du.forEach(u => used[u]--); asg[d] = [];
+    });
+  }
+  bt(0, 0, 0);
+  // 학생 구성·제약이 똑같은 과목끼리 날짜만 바꾼 조합은 하나로
+  const sig = masks.map((m, u) => m.join('') + '|' + [...cons[u].forbid].sort() + '|' + (cons[u].fix || '') + '|' + (cons[u].pOnly || ''));
+  const grp = new Map(); sig.forEach((s, u) => { if (!grp.has(s)) grp.set(s, []); grp.get(s).push(u); });
+  const gid = new Map(); [...grp.values()].filter(x => x.length > 1).forEach((x, i) => x.forEach(u => gid.set(u, i)));
+  const ssig = a => a.map((uids, d) => { const n = uids.filter(u => !gid.has(u)).sort((x, y) => x - y), cnt = {}; uids.filter(u => gid.has(u)).forEach(u => cnt[gid.get(u)] = (cnt[gid.get(u)] || 0) + 1); return `d${d}:${n.join('_')}|${Object.entries(cnt).sort().join(',')}`; }).join(';');
+  const b = new Map(); top.forEach(r => { const s = ssig(r.assignment); if (!b.has(s) || r.score < b.get(s).score) b.set(s, r); });
+  return { top: [...b.values()].sort((x, y) => x.score - y.score).slice(0, topK), nodes, truncated: nodes >= LIMIT };
+}
+function sxAssignPeriods(uids, cons, n) {
+  const slots = Array(n).fill(null), rest = [...uids];
+  uids.forEach(u => { const p = cons[u].pOnly; if (p && p <= n && slots[p - 1] === null) { slots[p - 1] = u; rest.splice(rest.indexOf(u), 1); } });
+  let pi = 0; rest.forEach(u => { while (pi < n && slots[pi] !== null) pi++; if (pi < n) slots[pi++] = u; });
+  return slots;
+}
+// 현재 칸 배치 기준 통계
+function sxStats(g, R, dpu) {
+  const N = sxData(g).N, w = sxState(g).w, perDay = [], tot = [0, 0, 0, 0, 0]; let full = 0;
+  dpu.forEach(row => { const u = row.filter(x => x != null), s = new Uint8Array(N); u.forEach(x => { const m = R.masks[x]; for (let i = 0; i < N; i++) s[i] += m[i]; });
+    const c = [0, 0, 0, 0, 0]; let f = 0; for (let i = 0; i < N; i++) { if (s[i] <= 4) c[s[i]]++; if (u.length && s[i] === u.length) f++; } perDay.push({ c, f, n: u.length }); c.forEach((x, k) => tot[k] += x); full += f; });
+  return { perDay, tot, full, score: w[0] * tot[0] + w[1] * tot[1] + w[2] * tot[2] + w[3] * tot[3] + w[4] * tot[4] };
+}
+function sxViol(R, dpu) {
+  const v = new Set();
+  dpu.forEach((row, d) => row.forEach((u, p) => { if (u == null) return; const c = R.cons[u], day = d + 1; if ((c.pOnly && c.pOnly !== p + 1) || c.forbid.has(day) || (c.fix && c.fix !== day)) v.add(d + '-' + p); }));
+  return v;
+}
+function sxComboHtml(g, R, c, i) {
+  const st = sxStats(g, R, c.dpu), vio = sxViol(R, c.dpu), maxP = Math.max(...R.slotsPer), changed = JSON.stringify(c.dpu) !== JSON.stringify(c.base);
+  return `<div class="card sx-combo"><div class="row"><h3 style="margin:0">조합 ${i + 1}</h3><span class="tag ${st.tot[4] ? 'bad' : 'ok'}">하루 4과목 응시 ${st.tot[4]}명</span><span class="tag">점수 ${st.score.toLocaleString()}</span>${changed ? '<span class="tag warn">수정됨</span>' : ''}
+      <span class="right"></span>${changed ? `<button class="btn sm" data-act="sx-revert" data-i="${i}">처음 조합으로</button>` : ''}<button class="btn pri" data-act="sx-final" data-i="${i}">이 시간표로 확정</button></div>
+    <p class="small muted" style="margin:6px 0">칸을 하나 누른 뒤 다른 칸을 누르면 서로 바뀝니다(다른 날로도 이동 가능). 제약에 어긋나는 칸은 빨간색으로 표시됩니다.</p>
+    <div class="sx-tt-wrap"><table class="tt sx-tt"><thead><tr><th></th>${R.dd.map(d => `<th>${d.day}일차<br><span class="small">${fmtDate(d.date, true)}</span></th>`).join('')}</tr></thead><tbody>
+    ${Array.from({ length: maxP }, (_, p) => `<tr><th>${p + 1}교시</th>${R.dd.map((d, di) => {
+      if (p >= R.slotsPer[di]) return '<td class="cell na">—</td>';
+      const u = c.dpu[di][p], k = di + '-' + p, sel = c.sel === k;
+      return `<td class="cell ${sel ? 'sel' : ''} ${vio.has(k) ? 'vio' : ''}" data-act="sx-cell" data-i="${i}" data-k="${k}">${u == null ? '<span class="muted">·</span>' : R.units[u].subjects.map(s => `<span class="chip ${sxData(g).common.has(s) ? '' : 'sel'}">${esc(s)}</span>`).join('')}</td>`; }).join('')}</tr>`).join('')}
+    </tbody></table></div>
+    <table class="t sx-st"><thead><tr><th>일차</th><th class="num">0과목</th><th class="num">1과목</th><th class="num">2과목</th><th class="num">3과목</th><th class="num">4과목</th></tr></thead><tbody>
+    ${st.perDay.map((x, d) => `<tr><td>${R.dd[d].day}일차</td>${x.c.map((n, k) => `<td class="num ${n && k === 4 ? 'badc' : n && (k === 0 || k === 3) ? 'warnc' : ''}">${n}</td>`).join('')}</tr>`).join('')}
+    <tr style="font-weight:700"><td>합계</td>${st.tot.map(n => `<td class="num">${n}</td>`).join('')}</tr></tbody></table>
+    ${changed ? sxDiffHtml(st, sxStats(g, R, c.base)) : ''}</div>`;
+}
+A['sx-cell'] = b => {
+  const g = +St.ui.sx.g, R = St.ui.sx.res[g], c = R.top[+b.dataset.i], k = b.dataset.k;
+  R.top.forEach((x, j) => { if (j !== +b.dataset.i) x.sel = null; });
+  if (!c.sel) { const [d, p] = k.split('-').map(Number); if (c.dpu[d][p] == null) return; c.sel = k; }
+  else if (c.sel === k) c.sel = null;
+  else { const [d1, p1] = c.sel.split('-').map(Number), [d2, p2] = k.split('-').map(Number); const t = c.dpu[d1][p1]; c.dpu[d1][p1] = c.dpu[d2][p2]; c.dpu[d2][p2] = t; c.sel = null; }
+  render();
+};
+A['sx-revert'] = b => { const g = +St.ui.sx.g, c = St.ui.sx.res[g].top[+b.dataset.i]; c.dpu = c.base.map(a => a.slice()); c.sel = null; render(); };
+A['sx-final'] = async b => {
+  const g = +St.ui.sx.g, R = St.ui.sx.res[g], c = R.top[+b.dataset.i];
+  if (sxViol(R, c.dpu).size && !await confirmBox('제약에 어긋나는 칸이 있습니다. 그래도 확정할까요?')) return;
+  const slots = {};
+  c.dpu.forEach((row, d) => row.forEach((u, p) => { if (u != null) slots[Core.slotKey(R.dd[d].day, p + 1)] = R.units[u].subjects.slice(); }));
+  const had = St.docs['assign:' + g];
+  const box = await modal('시험 시간표 확정', `<p><b>${g}학년</b> 고사 시간표를 이 조합으로 저장합니다.</p>
+    <label class="chk"><input type="checkbox" id="sxf-place" checked> 시험실·좌석도 추천값으로 바로 배치 (공통과목 = 자기 반 번호순, 선택과목 = 학급 평균 인원에 맞춘 반 수로 학번순 · 나중에 과목별 교실 조정 가능)</label>
+    ${had ? `<p class="small" style="color:var(--warn)">※ 이미 저장된 시험실·좌석 배치${had.source === 'file' ? '(엑셀 파일로 반영)' : ''}가 있습니다. 체크하면 새로 만든 배치로 바뀝니다.</p>` : ''}
+    <p class="small muted">확정 후에도 <b>6. 시간표 확인·직접 편집</b>과 <b>시험실·좌석 배치</b>에서 고칠 수 있습니다.</p>`, { ok: '확정' });
+  if (!box) return;
+  const doPlace = $('#sxf-place', box)?.checked;
+  try {
+    await busy('저장 중', async () => {
+      const pl = clone(P()); pl.slots = pl.slots || {}; pl.slots[g] = slots; await saveDoc('plan', pl);
+      await saveDoc('sched:' + g, Object.assign(clone(sxState(g)), { updatedAt: nowIso(), finalizedAt: nowIso() }));
+      if (doPlace) await placeBuildSave(g, placeOpts(g));
+    });
+    toast(`${g}학년 시험 시간표를 확정했습니다`);
+    St.sub = doPlace ? 'place' : 'sxlist'; St.ui.place = St.ui.place || {}; St.ui.place.g = String(g); render();
+  } catch (e) { toast(e.message, true); }
+};
+
+/* 체크박스·입력칸 (data-sxc) */
+document.addEventListener('change', e => {
+  const el = e.target.closest('[data-sxc]'); if (!el) return;
+  const g = +St.ui.sx.g, S = sxState(g), t = el.dataset.sxc;
+  if (t === 'exam') { const s = el.dataset.s; S.exam = el.checked ? [...new Set([...S.exam, s])] : S.exam.filter(x => x !== s); sxSyncAuto(g); }
+  else if (t === 'w') S.w[+el.dataset.k] = Math.max(0, +el.value || 0);
+  else if (t === 'noFour') S.noFour = el.checked;
+  else if (t === 'con') { const c = S.cons[+el.dataset.i], f = el.dataset.f; c[f] = f === 'subject' || f === 'type' ? el.value : +el.value;
+    if (f === 'type') { if (c.type === 'period_only') { c.period = c.period || 1; delete c.day; } else { c.day = c.day || (c.type === 'forbid_day' ? sxDays(g).length : 1); delete c.period; } } }
+  sxSave(g); render();
+});
+
+/* =========================================================
+   시험실·좌석 배치 만들기
+   ========================================================= */
+const PLACE_CAP = 36;   // 자습 교실 기준 인원
+const PLACE_MAX = 38;   // 추천할 때 한 교실 최대 인원 (직접 고르면 넘어도 배치)
+// 추천 반 수: 학급 평균 재적에 가까우면서 한 교실이 38명을 넘지 않는 반 수
+function placeRecs(g, n) {
+  const avg = placeAvg(g), min = Math.max(1, Math.ceil(n / PLACE_MAX));
+  const r = Math.max(min, Math.round(n / avg));   // 예: 104명 → 3반(34~35명)·4반(26명)
+  return [...new Set([min, r, r + 1])].sort((a, b) => a - b);
+}
+function placeOpts(g) {
+  const st = St.docs['assign:' + g], o = (st && st.opts) || {}, gd = GD(g);
+  return { rooms: (o.rooms && o.rooms.length ? o.rooms : Core.classRooms(gd)), modes: o.modes || {}, sub: o.sub || {} };
+}
+function placeIsCommon(g, k) { const info = Core.subjectInfo(GD(g)), subs = slotsOf(g)[k] || []; return subs.every(s => s === Core.STUDY) || subs.some(s => info[s] && info[s].type === '공통'); }
+// 과목 응시 인원(응시 제외 학생 빼고)
+function placeCount(g, sub) { const act = new Set(Core.active(GD(g)).map(s => s.id)); return (GD(g).enroll[sub] || []).filter(id => act.has(id)).length; }
+function placeAvg(g) { const n = Core.active(GD(g)).length, c = classesOf(g).length || 1; return Math.round(n / c); }
+const splitNums = (n, r) => { if (!r) return []; const b = Math.floor(n / r), e = n % r; return Array.from({ length: r }, (_, i) => b + (i < e ? 1 : 0)); };
+const rangeTxt = a => { if (!a.length) return ''; const mn = Math.min(...a), mx = Math.max(...a); return mn === mx ? `${mn}명` : `${mn}~${mx}명`; };
+// 기본값: 과목마다 학급 평균 재적에 가까운 반 수만큼, 시험실 순서대로 비어 있는 교실 배정
+function placeDefaultSub(g, k, o) {
+  const subs = (slotsOf(g)[k] || []).filter(x => x !== Core.STUDY), avg = placeAvg(g), used = new Set(), res = {};
+  subs.forEach(sub => { const n = placeCount(g, sub), want = Math.max(1, Math.round(n / avg), Math.ceil(n / PLACE_MAX)); res[sub] = o.rooms.filter(r => !used.has(r)).slice(0, want); res[sub].forEach(r => used.add(r)); });
+  return res;
+}
+function placeSubOf(g, k, o) { if (!o.sub[k]) o.sub[k] = placeDefaultSub(g, k, o); return o.sub[k]; }
+async function placeBuildSave(g, o) {
+  const gd = GD(g), sl = slotsOf(g), modes = {}, opt = {};
+  for (const k of Object.keys(sl)) {
+    const com = placeIsCommon(g, k);
+    modes[k] = com ? 'home' : (o.modes[k] || 'split');
+    opt[k] = { capacity: PLACE_CAP, rooms: o.rooms, subRooms: com ? null : placeSubOf(g, k, o), even: true };
+  }
+  const r = Core.buildAssignments(gd, sl, modes, opt);
+  await saveDoc('assign:' + g, { source: 'auto', updatedAt: nowIso(), slots: r.slots, opts: { rooms: o.rooms, modes: o.modes, sub: o.sub } });
+  return r;
+}
+const roomShort = r => { const m = String(r).match(/^\d+-(\d+)$/); return m ? m[1] + '반' : r; };
+function placeSlotHtml(g, k, o) {
+  const sl = slotsOf(g), subs = sl[k].filter(x => x !== Core.STUDY), m = o.modes[k] || 'split', avg = placeAvg(g);
+  const head = `<div class="row"><b>${slotLabel(k)}</b><span class="right"></span><select data-plo="mode" data-k="${k}"><option value="split" ${m === 'split' ? 'selected' : ''}>과목별 시험실 이동</option><option value="home" ${m === 'home' ? 'selected' : ''}>자기 반 교실</option></select></div>`;
+  if (m === 'home') return `<div class="pl-slot">${head}<p class="small muted" style="margin:6px 0 0">${subs.map(esc).join(', ')} — 모두 자기 반 교실에서 응시</p></div>`;
+  const S = placeSubOf(g, k, o), owner = {}; Object.entries(S).forEach(([sub, rs]) => (rs || []).forEach(r => owner[r] = sub));
+  const allSub = subs.reduce((a, sub) => a + placeCount(g, sub), 0), study = Core.active(GD(g)).length - allSub;
+  const free = o.rooms.filter(r => !owner[r]);
+  return `<div class="pl-slot">${head}
+    ${subs.map(sub => {
+      const n = placeCount(g, sub), rs = S[sub] || [], nums = splitNums(n, rs.length), mx = Math.max(0, ...nums);
+      const rec = placeRecs(g, n);
+      return `<div class="pl-sub"><div class="row"><b>${esc(sub)}</b><span class="tag">응시 ${n}명</span>
+          <span class="small muted">반 수 추천:</span>${rec.map(r => `<button class="btn sm ${rs.length === r ? 'pri' : ''}" data-act="pl-n" data-k="${k}" data-s="${esc(sub)}" data-n="${r}">${r}반 <span class="tiny">(${rangeTxt(splitNums(n, r))})</span></button>`).join('')}
+          <span class="right"></span>${rs.length ? `<span class="tag ${mx > PLACE_MAX ? 'bad' : mx > avg ? 'warn' : 'ok'}">${rs.length}개 반 · ${nums.join('·')}명${mx > PLACE_MAX ? ` · ${PLACE_MAX}명 초과` : ''}</span>` : '<span class="tag bad">교실을 고르세요</span>'}</div>
+        <div class="pl-rooms">${o.rooms.map(r => { const ow = owner[r], mine = ow === sub;
+          return `<button class="pl-room ${mine ? 'on' : ''} ${ow && !mine ? 'taken' : ''}" data-act="pl-room" data-k="${k}" data-s="${esc(sub)}" data-r="${esc(r)}" ${ow && !mine ? `disabled title="${esc(ow)} 사용 중"` : ''}>${esc(roomShort(r))}${mine ? `<span class="tiny">${nums[rs.indexOf(r)]}명</span>` : ow ? `<span class="tiny">${esc(ow.slice(0, 4))}</span>` : ''}</button>`; }).join('')}</div></div>`; }).join('')}
+    ${study > 0 ? `<p class="small muted" style="margin:6px 0 0">이 교시 시험 없는 학생(자습·하교 대상) 최대 ${study}명 → 남는 교실(${free.map(roomShort).join(', ') || '없음'}) 앞 번호부터 자습</p>` : ''}</div>`;
+}
+function sPlace(v) {
+  const gs = grades(); if (!gs.length) return (v.innerHTML = '<div class="card muted">먼저 학생 편성을 등록하세요.</div>');
+  const u = St.ui.place || (St.ui.place = {}); ensure(u, 'g', gs.map(String)); const g = +u.g, sl = slotsOf(g), keys = sortedSlotKeys(sl);
+  if (!u.o || u.o.g !== g) u.o = Object.assign(clone(placeOpts(g)), { g });
+  const o = u.o, st = St.docs['assign:' + g];
+  const com = keys.filter(k => placeIsCommon(g, k)), sel = keys.filter(k => !placeIsCommon(g, k));
+  v.innerHTML = `<div class="card"><div class="row"><h3 style="margin:0">시험실·좌석 배치 만들기</h3>${gs.map(x => `<button class="btn sm ${x === g ? 'pri' : ''}" data-act="pl-g" data-g="${x}">${x}학년</button>`).join('')}<span class="right tag">학급 평균 재적 ${placeAvg(g)}명</span></div>
+    <div class="help" style="margin-top:10px"><b>공통과목</b>은 자기 반 교실에서 번호순으로 앉습니다. <b>선택과목</b>은 과목마다 <b>몇 개 반으로 나눌지</b> 고르고(추천 버튼), <b>쓸 교실</b>을 눌러 정하세요. 학번이 빠른 순서대로 고른 교실에 고르게 나눠 앉습니다(인원이 넘쳐도 그대로 배치). 같은 교시에 다른 과목이 쓰는 교실은 고를 수 없습니다.</div></div>
+  ${!keys.length ? '<div class="warnbox">이 학년은 아직 고사 시간표가 없습니다. <b>시험 시간표 작성</b>에서 시간표를 확정하세요.</div>' : `
+  <div class="card"><div class="row" style="align-items:flex-end">
+      <label class="f grow">쓸 수 있는 시험실 (쉼표로 구분 · 이 순서로 버튼이 나옴)<input type="text" value="${esc(o.rooms.join(', '))}" data-plo="rooms"></label>
+      <button class="btn sm" data-act="plo-reset">기본(학년 교실)</button><button class="btn sm" data-act="plo-auto">전체 추천값으로 다시</button></div>
+    ${com.length ? `<p class="small muted" style="margin:10px 0 0"><b>공통과목(자기 반 교실):</b> ${com.map(k => `${slotLabel(k)} ${sl[k].map(esc).join(', ')}`).join(' · ')}</p>` : ''}</div>
+  ${sel.map(k => `<div class="card">${placeSlotHtml(g, k, o)}</div>`).join('')}
+  <div class="card"><div class="row"><button class="btn pri" data-act="plo-build">배치 만들기 · 저장</button>
+      ${st ? `<span class="small muted">현재 배치: ${st.source === 'file' ? '엑셀 파일 ' + esc(st.fileName || '') : st.source === 'auto' ? '자동 배치' : st.source} · ${fmtTime(st.updatedAt)} — 다시 만들면 바뀝니다</span>` : ''}</div></div>
+  <div class="card"><h3>배치 결과</h3>${statusPanel(g)}<p class="small muted">교실별 좌석 모양(열별 인원)은 <b>3. 교실 좌석</b>, 일부 학생의 시험실을 바꾸려면 <b>2. 시험실 직접 고치기</b>를 이용하세요.</p></div>`}`;
+}
+A['pl-g'] = b => { St.ui.place.g = b.dataset.g; render(); };
+A['plo-reset'] = () => { const g = +St.ui.place.g; St.ui.place.o.rooms = Core.classRooms(GD(g)); render(); };
+A['plo-auto'] = () => { St.ui.place.o.sub = {}; render(); };
+// 반 수 추천 버튼: 이미 고른 교실은 유지하고 모자라면 비어 있는 교실을 앞에서부터 더함
+A['pl-n'] = b => {
+  const g = +St.ui.place.g, o = St.ui.place.o, k = b.dataset.k, sub = b.dataset.s, n = +b.dataset.n, S = placeSubOf(g, k, o);
+  const taken = new Set(Object.entries(S).filter(([x]) => x !== sub).flatMap(([, rs]) => rs || []));
+  let rs = (S[sub] || []).slice(0, n);
+  for (const r of o.rooms) { if (rs.length >= n) break; if (!taken.has(r) && !rs.includes(r)) rs.push(r); }
+  S[sub] = o.rooms.filter(r => rs.includes(r)); render();
+};
+A['pl-room'] = b => {
+  const g = +St.ui.place.g, o = St.ui.place.o, k = b.dataset.k, sub = b.dataset.s, r = b.dataset.r, S = placeSubOf(g, k, o), rs = S[sub] || [];
+  S[sub] = rs.includes(r) ? rs.filter(x => x !== r) : o.rooms.filter(x => x === r || rs.includes(x)); render();
+};
+A['plo-build'] = async () => {
+  const g = +St.ui.place.g, o = St.ui.place.o, st = St.docs['assign:' + g];
+  const empty = sortedSlotKeys(slotsOf(g)).filter(k => !placeIsCommon(g, k) && (o.modes[k] || 'split') === 'split').flatMap(k => Object.entries(placeSubOf(g, k, o)).filter(([sub, rs]) => !(rs || []).length && placeCount(g, sub)).map(([sub]) => `${slotLabel(k)} ${sub}`));
+  if (empty.length) return toast('교실을 고르지 않은 과목이 있습니다: ' + empty.join(', '), true);
+  if (st && st.source === 'file' && !await confirmBox('엑셀 파일로 반영한 시험실·좌석 배치를 새 배치로 바꿀까요?', { danger: true, ok: '바꾸기' })) return;
+  try { const r = await busy('배치 만드는 중', () => placeBuildSave(g, o)); toast('시험실·좌석 배치를 저장했습니다'); r.notes.forEach(n => toast(n, true)); render(); }
+  catch (e) { toast(e.message, true); }
+};
+document.addEventListener('change', e => {
+  const el = e.target.closest('[data-plo]'); if (!el) return;
+  const o = St.ui.place.o, t = el.dataset.plo;
+  if (t === 'rooms') { o.rooms = el.value.split(/[,，\s]+/).map(x => x.trim()).filter(Boolean); Object.values(o.sub).forEach(S => Object.keys(S).forEach(sub => S[sub] = (S[sub] || []).filter(r => o.rooms.includes(r)))); }
+  else if (t === 'mode') o.modes[el.dataset.k] = el.value;
+  render();
+});
+
+/* 처음(최적) 조합 대비 변화량 */
+function sxDiffHtml(cur, base) {
+  const bad = k => k === 0 || k === 3 || k === 4;
+  const cell = (d, k) => { if (!d) return '<td class="num muted">0</td>'; const worse = bad(k) ? d > 0 : d < 0; return `<td class="num ${worse ? 'badc' : 'okc'}">${d > 0 ? '+' : ''}${d}</td>`; };
+  const tot = [0, 1, 2, 3, 4].map(k => cur.tot[k] - base.tot[k]), ds = cur.score - base.score;
+  const parts = [[4, '4과목'], [3, '3과목'], [0, '0과목']].filter(([k]) => tot[k]).map(([k, n]) => `${n} 응시자 <b class="${tot[k] > 0 ? 'badc' : 'okc'}">${tot[k] > 0 ? '+' : ''}${tot[k]}명</b>`);
+  return `<div class="sx-diff"><h4 style="margin:0 0 4px">처음 조합 대비 변화 <span class="small muted">(+ 늘어남 / − 줄어듦 · 빨강 = 나빠짐, 초록 = 좋아짐)</span></h4>
+    <table class="t"><thead><tr><th>일차</th>${[0, 1, 2, 3, 4].map(k => `<th class="num">Δ${k}과목</th>`).join('')}</tr></thead><tbody>
+    ${cur.perDay.map((x, d) => `<tr><td>${d + 1}일차</td>${[0, 1, 2, 3, 4].map(k => cell(x.c[k] - base.perDay[d].c[k], k)).join('')}</tr>`).join('')}
+    <tr style="font-weight:700"><td>합계</td>${tot.map((d, k) => cell(d, k)).join('')}</tr></tbody></table>
+    <p class="small" style="margin:6px 0 0">${parts.length ? parts.join(' · ') + ` · 점수 <b class="${ds > 0 ? 'badc' : ds < 0 ? 'okc' : ''}">${ds > 0 ? '+' : ''}${ds.toLocaleString()}</b>` : '날짜별 과목 구성이 처음과 같아 인원 변화가 없습니다 (교시 순서만 바뀜).'}</p></div>`;
+}
+
+/* =========================================================
+   7. 학생별 응시 부담 명단 (확정된 고사 시간표 기준)
+   ========================================================= */
+// 학생별 그날 응시 교시(자습 제외)와 최장 연속 교시 수
+function burdenData(g) {
+  return memo('bd' + g, () => {
+    const gd = GD(g), sl = slotsOf(g), studs = Core.active(gd).slice().sort((a, b) => a.id - b.id);
+    const sets = {}; Object.entries(gd.enroll).forEach(([k, ids]) => sets[k] = new Set(ids));
+    const dayNums = [...new Set(Object.keys(sl).map(k => Core.parseSlotKey(k).day))].sort((a, b) => a - b);
+    return dayNums.map(day => {
+      const keys = Object.keys(sl).filter(k => Core.parseSlotKey(k).day === day).sort((a, b) => Core.parseSlotKey(a).period - Core.parseSlotKey(b).period);
+      const zero = [], c3 = [], c4 = [];
+      studs.forEach(s => {
+        const ex = [];
+        keys.forEach(k => { const sub = (sl[k] || []).find(x => x !== Core.STUDY && sets[x] && sets[x].has(s.id)); if (sub) ex.push({ p: Core.parseSlotKey(k).period, sub }); });
+        let run = 0, best = 0, prev = -9; ex.forEach(x => { run = x.p === prev + 1 ? run + 1 : 1; prev = x.p; best = Math.max(best, run); });
+        const e = { s, ex };
+        if (!ex.length) zero.push(e); else if (best >= 4) c4.push(e); else if (best === 3) c3.push(e);
+      });
+      return { day, zero, c3, c4 };
+    });
+  });
+}
+function sxList(v) {
+  const gs = grades(); if (!gs.length) return (v.innerHTML = '<div class="card muted">먼저 학생 편성을 등록하세요.</div>');
+  const U = St.ui.sx || (St.ui.sx = { d: {}, res: {} }); ensure(U, 'g', gs.map(String)); const g = +U.g;
+  const sl = slotsOf(g);
+  const head = `<div class="card"><div class="row"><h3 style="margin:0">학생별 응시 부담 명단</h3>${gs.map(x => `<button class="btn sm ${x === g ? 'pri' : ''}" data-act="sx-g" data-g="${x}">${x}학년</button>`).join('')}
+    <span class="right"></span>${Object.keys(sl).length ? '<button class="btn" data-act="bd-xlsx">엑셀 다운로드</button>' : ''}</div>
+    <div class="help" style="margin-top:10px"><b>확정된 고사 시간표</b> 기준입니다. 날짜별로 <b>시험이 없는(0과목) 학생</b>, <b>3과목을 연속으로</b> 보는 학생, <b>4과목 이상을 연속으로</b> 보는 학생을 보여 줍니다. (자습 교시는 응시로 세지 않습니다)</div></div>`;
+  if (!Object.keys(sl).length) return (v.innerHTML = head + '<div class="warnbox">아직 확정된 고사 시간표가 없습니다. <b>5. 가중치·조합 찾기</b>에서 시간표를 확정하세요.</div>');
+  const B = burdenData(g), dl = d => `${d}일차 ${fmtDate(dateOf(d), true)}`;
+  const tbl = list => `<div class="tbl-wrap"><table class="t"><thead><tr><th>학번</th><th>이름</th><th>응시 교시</th><th>과목</th></tr></thead><tbody>${list.map(({ s, ex }) => `<tr><td>${s.id}</td><td class="nowrap">${esc(s.name)}${thMark(g, s.id)}</td><td class="nowrap">${ex.map(x => x.p).join('·') || '—'}</td><td class="small">${ex.map(x => esc(x.sub)).join(', ') || '—'}</td></tr>`).join('')}</tbody></table></div>`;
+  const sec = (title, list, cls) => `<details class="bd" ${list.length && list.length <= 40 ? 'open' : ''}><summary><b>${title}</b> <span class="tag ${list.length ? cls : ''}">${list.length}명</span></summary>${list.length ? tbl(list) : '<p class="muted small">해당 학생 없음</p>'}</details>`;
+  v.innerHTML = head + `<div class="card"><table class="t"><thead><tr><th>일차</th><th class="num">0과목 (시험 없음)</th><th class="num">3과목 연속</th><th class="num">4과목 이상 연속</th></tr></thead><tbody>
+    ${B.map(x => `<tr><td>${dl(x.day)}</td><td class="num">${x.zero.length}</td><td class="num ${x.c3.length ? 'warnc' : ''}">${x.c3.length}</td><td class="num ${x.c4.length ? 'badc' : ''}">${x.c4.length}</td></tr>`).join('')}</tbody></table></div>`
+    + B.map(x => `<div class="card"><h3>${dl(x.day)}</h3>${sec('4과목 이상 연속 응시', x.c4, 'bad')}${sec('3과목 연속 응시', x.c3, 'warn')}${sec('0과목 (그날 시험 없음)', x.zero, '')}</div>`).join('');
+}
+A['bd-xlsx'] = () => withExcel('엑셀 만드는 중', async () => {
+  const g = +St.ui.sx.g, B = burdenData(g), wb = new ExcelJS.Workbook();
+  const ws0 = wb.addWorksheet('요약'); ws0.columns = [{ width: 16 }, { width: 16 }, { width: 14 }, { width: 18 }];
+  ['일차', '0과목(시험 없음)', '3과목 연속', '4과목 이상 연속'].forEach((h, k) => xc(ws0, 1, k + 1, h, { bold: true, fill: 'FFEEEEEE' }));
+  B.forEach((x, i) => [`${x.day}일차 ${fmtDate(dateOf(x.day), true)}`, x.zero.length, x.c3.length, x.c4.length].forEach((val, k) => xc(ws0, i + 2, k + 1, val)));
+  for (const x of B) {
+    const ws = wb.addWorksheet(xlSheetName(`${x.day}일차`)); ws.columns = [{ width: 18 }, { width: 9 }, { width: 11 }, { width: 11 }, { width: 46 }];
+    let r = 1;
+    for (const [t, list] of [['4과목 이상 연속 응시', x.c4], ['3과목 연속 응시', x.c3], ['0과목 (그날 시험 없음)', x.zero]]) {
+      xm(ws, r, 1, r, 5, `${x.day}일차 ${fmtDate(dateOf(x.day))} · ${t} (${list.length}명)`, { bold: true, noBorder: true, h: 'left' }); r++;
+      ['구분', '학번', '이름', '응시 교시', '과목'].forEach((h, k) => xc(ws, r, k + 1, h, { bold: true, fill: 'FFEEEEEE' })); r++;
+      list.forEach(({ s, ex }) => { [t, s.id, s.name, ex.map(e => e.p + '교시').join(', ') || '—', ex.map(e => e.sub).join(', ') || '—'].forEach((val, k) => xc(ws, r, k + 1, val, k === 4 ? { h: 'left' } : {})); r++; });
+      r++;
+    }
+  }
+  await xlSave(wb, `${g}학년_응시부담명단.xlsx`);
+});
 
 </script>
 </body>
