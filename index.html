@@ -640,7 +640,8 @@ table.ml2 td.att.on{background:var(--ok-soft);color:var(--ok);font-weight:700;fo
     }
     // 자습: 남은 교실에 고르게 분산 (과목 교실을 직접 고른 경우 남는 교실 중 앞 번호부터)
     const rest = inRoom.filter(s => subjOf[s.id] === '자습');
-    if (rest.length && hasSR) {
+    if (rest.length && SR[STUDY] && SR[STUDY].length) placeIn(rest, SR[STUDY]);   // 자습 교실도 직접 고른 경우
+    else if (rest.length && hasSR) {
       rows.forEach(r => usedR.add(r[2]));
       const remain = rooms.filter(r => !usedR.has(r)), need = Math.max(1, Math.ceil(rest.length / cap));
       const use = remain.length >= need ? remain.slice(0, need) : remain.concat(Array.from({ length: need - remain.length }, () => '추가' + (++overflow)));
@@ -3651,11 +3652,18 @@ function placeRecs(g, n) {
 }
 function placeOpts(g) {
   const st = St.docs['assign:' + g], o = (st && st.opts) || {}, gd = GD(g);
-  return { rooms: (o.rooms && o.rooms.length ? o.rooms : Core.classRooms(gd)), modes: o.modes || {}, sub: o.sub || {} };
+  return { rooms: (o.rooms && o.rooms.length ? o.rooms : Core.classRooms(gd)), modes: o.modes || {}, sub: o.sub || {}, studyMode: o.studyMode || {} };
 }
 function placeIsCommon(g, k) { const info = Core.subjectInfo(GD(g)), subs = slotsOf(g)[k] || []; return subs.every(s => s === Core.STUDY) || subs.some(s => info[s] && info[s].type === '공통'); }
 // 과목 응시 인원(응시 제외 학생 빼고)
 function placeCount(g, sub) { const act = new Set(Core.active(GD(g)).map(s => s.id)); return (GD(g).enroll[sub] || []).filter(id => act.has(id)).length; }
+// 그 교시 자습 인원: 이 교시 시험이 없고, 그날 뒤 교시에 시험이 있어 학교에 남는 학생 (끝나고 하교하는 학생 제외)
+function placeStudyCount(g, k) {
+  const sl = slotsOf(g), { day, period } = Core.parseSlotKey(k), gd = GD(g), act = Core.active(gd);
+  const subsAt = (sl[k] || []).filter(x => x !== Core.STUDY), taking = new Set(subsAt.flatMap(sub => gd.enroll[sub] || []));
+  const later = new Set(Object.entries(sl).filter(([kk]) => { const q = Core.parseSlotKey(kk); return q.day === day && q.period > period; }).flatMap(([, subs]) => subs.filter(x => x !== Core.STUDY).flatMap(sub => gd.enroll[sub] || [])));
+  return act.filter(s => !taking.has(s.id) && later.has(s.id)).length;
+}
 function placeAvg(g) { const n = Core.active(GD(g)).length, c = classesOf(g).length || 1; return Math.round(n / c); }
 const splitNums = (n, r) => { if (!r) return []; const b = Math.floor(n / r), e = n % r; return Array.from({ length: r }, (_, i) => b + (i < e ? 1 : 0)); };
 const rangeTxt = a => { if (!a.length) return ''; const mn = Math.min(...a), mx = Math.max(...a); return mn === mx ? `${mn}명` : `${mn}~${mx}명`; };
@@ -3663,10 +3671,20 @@ const rangeTxt = a => { if (!a.length) return ''; const mn = Math.min(...a), mx 
 function placeDefaultSub(g, k, o) {
   const subs = (slotsOf(g)[k] || []).filter(x => x !== Core.STUDY), avg = placeAvg(g), used = new Set(), res = {};
   subs.forEach(sub => { const n = placeCount(g, sub), want = Math.max(1, Math.round(n / avg), Math.ceil(n / PLACE_MAX)); res[sub] = o.rooms.filter(r => !used.has(r)).slice(0, want); res[sub].forEach(r => used.add(r)); });
+  const ns = placeStudyCount(g, k);
+  if (ns) res[Core.STUDY] = o.rooms.filter(r => !used.has(r)).slice(0, Math.max(1, Math.round(ns / avg), Math.ceil(ns / PLACE_MAX)));
   return res;
 }
-function placeSubOf(g, k, o) { if (!o.sub[k]) o.sub[k] = placeDefaultSub(g, k, o); return o.sub[k]; }
-async function placeBuildSave(g, o) {
+function placeSubOf(g, k, o) {
+  if (!o.sub[k]) o.sub[k] = placeDefaultSub(g, k, o);
+  const S = o.sub[k], ns = placeStudyCount(g, k);
+  if (ns && S[Core.STUDY] === undefined) {   // 예전에 저장한 설정에는 자습 교실이 없음 → 남는 교실 앞에서부터 채움
+    const used = new Set(Object.values(S).flat()), avg = placeAvg(g);
+    S[Core.STUDY] = o.rooms.filter(r => !used.has(r)).slice(0, Math.max(1, Math.round(ns / avg), Math.ceil(ns / PLACE_MAX)));
+  }
+  return S;
+}
+function placeCompute(g, o) {
   const gd = GD(g), sl = slotsOf(g), modes = {}, opt = {};
   for (const k of Object.keys(sl)) {
     const com = placeIsCommon(g, k);
@@ -3674,8 +3692,43 @@ async function placeBuildSave(g, o) {
     opt[k] = { capacity: PLACE_CAP, rooms: o.rooms, subRooms: com ? null : placeSubOf(g, k, o), even: true };
   }
   const r = Core.buildAssignments(gd, sl, modes, opt);
-  await saveDoc('assign:' + g, { source: 'auto', updatedAt: nowIso(), slots: r.slots, opts: { rooms: o.rooms, modes: o.modes, sub: o.sub } });
+  r.follow = placeFollow(g, r.slots, o);
   return r;
+}
+async function placeBuildSave(g, o) {
+  const r = placeCompute(g, o);
+  await saveDoc('assign:' + g, { source: 'auto', updatedAt: nowIso(), slots: r.slots, opts: { rooms: o.rooms, modes: o.modes, sub: o.sub, studyMode: o.studyMode || {} } });
+  return r;
+}
+/* 자습 좌석 '다음 시험 좌석 그대로': 자습 학생을 그날 바로 다음 시험의 시험실·좌석에 앉힘
+   (그 교실이 이 교시 시험에 쓰이거나 자리가 겹치면 → 고른 자습 교실에 학번순으로) */
+function placeFollow(g, slots, o) {
+  const info = {}, sm = o.studyMode || {};
+  for (const k of Object.keys(slots)) {
+    if ((sm[k] || 'follow') !== 'follow' || placeIsCommon(g, k) || (o.modes[k] || 'split') !== 'split') continue;
+    const sl = slots[k], study = sl.rows.filter(r => r[1] === '자습'); if (!study.length) continue;
+    const { day, period } = Core.parseSlotKey(k);
+    const later = Object.keys(slots).filter(kk => { const q = Core.parseSlotKey(kk); return q.day === day && q.period > period; }).sort((a, b) => Core.parseSlotKey(a).period - Core.parseSlotKey(b).period);
+    const examRooms = new Set(sl.rows.filter(r => r[1] !== '자습').map(r => r[2]));
+    const used = new Set(), moved = new Map(), left = [];
+    study.sort((a, b) => a[0] - b[0]).forEach(r => {
+      let nx = null; for (const kk of later) { const x = slots[kk].rows.find(y => y[0] === r[0] && y[1] !== '자습'); if (x) { nx = x; break; } }
+      const key = nx && `${nx[2]}|${nx[3]}`;
+      if (nx && nx[2] && nx[3] && !examRooms.has(nx[2]) && !used.has(key)) { used.add(key); moved.set(r[0], [nx[2], nx[3]]); } else left.push(r[0]);
+    });
+    // 따라가지 못한 학생: 고른 자습 교실(없으면 남는 교실)에 학번순, 빈 좌석부터
+    const pick = ((o.sub[k] || {})[Core.STUDY] || []).filter(x => !examRooms.has(x));
+    const pool = pick.length ? pick : o.rooms.filter(x => !examRooms.has(x));
+    const per = Math.ceil(left.length / Math.max(1, pool.length)); let pi = 0, cnt = 0;
+    left.forEach(sid => {
+      while (pi < pool.length - 1 && cnt >= per) { pi++; cnt = 0; }
+      const room = pool[pi] || '추가1'; let seat = 1; while (used.has(`${room}|${seat}`)) seat++;
+      used.add(`${room}|${seat}`); moved.set(sid, [room, seat]); cnt++;
+    });
+    sl.rows.forEach(r => { if (r[1] === '자습' && moved.has(r[0])) { const [rm, st] = moved.get(r[0]); r[2] = rm; r[3] = st; } });
+    info[k] = { follow: study.length - left.length, left: left.length };
+  }
+  return info;
 }
 const roomShort = r => { const m = String(r).match(/^\d+-(\d+)$/); return m ? m[1] + '반' : r; };
 function placeSlotHtml(g, k, o) {
@@ -3683,18 +3736,21 @@ function placeSlotHtml(g, k, o) {
   const head = `<div class="row"><b>${slotLabel(k)}</b><span class="right"></span><select data-plo="mode" data-k="${k}"><option value="split" ${m === 'split' ? 'selected' : ''}>과목별 시험실 이동</option><option value="home" ${m === 'home' ? 'selected' : ''}>자기 반 교실</option></select></div>`;
   if (m === 'home') return `<div class="pl-slot">${head}<p class="small muted" style="margin:6px 0 0">${subs.map(esc).join(', ')} — 모두 자기 반 교실에서 응시</p></div>`;
   const S = placeSubOf(g, k, o), owner = {}; Object.entries(S).forEach(([sub, rs]) => (rs || []).forEach(r => owner[r] = sub));
-  const allSub = subs.reduce((a, sub) => a + placeCount(g, sub), 0), study = Core.active(GD(g)).length - allSub;
-  const free = o.rooms.filter(r => !owner[r]);
+  const ns = placeStudyCount(g, k);
   return `<div class="pl-slot">${head}
-    ${subs.map(sub => {
-      const n = placeCount(g, sub), rs = S[sub] || [], nums = splitNums(n, rs.length), mx = Math.max(0, ...nums);
-      const rec = placeRecs(g, n);
-      return `<div class="pl-sub"><div class="row"><b>${esc(sub)}</b><span class="tag">응시 ${n}명</span>
+    ${[...subs, ...(ns ? [Core.STUDY] : [])].map(sub => {
+      const isS = sub === Core.STUDY, n = isS ? ns : placeCount(g, sub), rs = S[sub] || [];
+      const fol = isS && ((o.studyMode || {})[k] || 'follow') === 'follow', pv = fol ? placePreview(g, o).slots[k] : null;
+      const nums = fol && pv ? rs.map(r => pv.rows.filter(x => x[1] === '자습' && x[2] === r).length) : splitNums(n, rs.length), mx = Math.max(0, ...nums);
+      const rec = placeRecs(g, Math.max(1, n));
+      return `<div class="pl-sub ${isS ? 'pl-study' : ''}"><div class="row"><b>${isS ? '자습' : esc(sub)}</b><span class="tag">${isS ? `자습 ${n}명` : `응시 ${n}명`}</span>${isS ? `<select data-plo="smode" data-k="${k}" title="자습 좌석 정하는 방법"><option value="follow" ${((o.studyMode || {})[k] || 'follow') === 'follow' ? 'selected' : ''}>다음 시험 좌석 그대로</option><option value="sid" ${((o.studyMode || {})[k]) === 'sid' ? 'selected' : ''}>학번순으로 새로 배치</option></select>
+          ${((o.studyMode || {})[k] || 'follow') === 'follow' ? (() => { const f = placePreview(g, o).follow[k]; return f ? `<span class="small">다음 시험 좌석에 <b>${f.follow}명</b>${f.left ? ` · 따라갈 수 없는 <b>${f.left}명</b>은 아래 고른 교실에 학번순` : ''}</span>` : ''; })() : ''}
+          <span class="small muted">(이 교시 시험이 없고 뒤 교시 시험 때문에 남는 학생 · 하교생 제외)</span>` : ''}
           <span class="small muted">반 수 추천:</span>${rec.map(r => `<button class="btn sm ${rs.length === r ? 'pri' : ''}" data-act="pl-n" data-k="${k}" data-s="${esc(sub)}" data-n="${r}">${r}반 <span class="tiny">(${rangeTxt(splitNums(n, r))})</span></button>`).join('')}
           <span class="right"></span>${rs.length ? `<span class="tag ${mx > PLACE_MAX ? 'bad' : mx > avg ? 'warn' : 'ok'}">${rs.length}개 반 · ${nums.join('·')}명${mx > PLACE_MAX ? ` · ${PLACE_MAX}명 초과` : ''}</span>` : '<span class="tag bad">교실을 고르세요</span>'}</div>
         <div class="pl-rooms">${o.rooms.map(r => { const ow = owner[r], mine = ow === sub;
           return `<button class="pl-room ${mine ? 'on' : ''} ${ow && !mine ? 'taken' : ''}" data-act="pl-room" data-k="${k}" data-s="${esc(sub)}" data-r="${esc(r)}" ${ow && !mine ? `disabled title="${esc(ow)} 사용 중"` : ''}>${esc(roomShort(r))}${mine ? `<span class="tiny">${nums[rs.indexOf(r)]}명</span>` : ow ? `<span class="tiny">${esc(ow.slice(0, 4))}</span>` : ''}</button>`; }).join('')}</div></div>`; }).join('')}
-    ${study > 0 ? `<p class="small muted" style="margin:6px 0 0">이 교시 시험 없는 학생(자습·하교 대상) 최대 ${study}명 → 남는 교실(${free.map(roomShort).join(', ') || '없음'}) 앞 번호부터 자습</p>` : ''}</div>`;
+    ${!ns ? '<p class="small muted" style="margin:6px 0 0">이 교시에 시험이 없는 학생은 모두 시험이 끝나 하교하므로 자습 교실이 필요 없습니다.</p>' : ''}</div>`;
 }
 function sPlace(v) {
   const gs = grades(); if (!gs.length) return (v.innerHTML = '<div class="card muted">먼저 학생 편성을 등록하세요.</div>');
@@ -3703,7 +3759,7 @@ function sPlace(v) {
   const o = u.o, st = St.docs['assign:' + g];
   const com = keys.filter(k => placeIsCommon(g, k)), sel = keys.filter(k => !placeIsCommon(g, k));
   v.innerHTML = `<div class="card"><div class="row"><h3 style="margin:0">시험실·좌석 배치 만들기</h3>${gs.map(x => `<button class="btn sm ${x === g ? 'pri' : ''}" data-act="pl-g" data-g="${x}">${x}학년</button>`).join('')}<span class="right tag">학급 평균 재적 ${placeAvg(g)}명</span></div>
-    <div class="help" style="margin-top:10px"><b>공통과목</b>은 자기 반 교실에서 번호순으로 앉습니다. <b>선택과목</b>은 과목마다 <b>몇 개 반으로 나눌지</b> 고르고(추천 버튼), <b>쓸 교실</b>을 눌러 정하세요. 학번이 빠른 순서대로 고른 교실에 고르게 나눠 앉습니다(인원이 넘쳐도 그대로 배치). 같은 교시에 다른 과목이 쓰는 교실은 고를 수 없습니다.</div></div>
+    <div class="help" style="margin-top:10px"><b>공통과목</b>은 자기 반 교실에서 번호순으로 앉습니다. <b>선택과목</b>과 <b>자습</b>(그 교시 시험이 없고 뒤 교시 시험 때문에 남는 학생)은 각각 <b>몇 개 반으로 나눌지</b> 고르고(추천 버튼), <b>쓸 교실</b>을 눌러 정하세요. 학번이 빠른 순서대로 고른 교실에 고르게 나눠 앉습니다(인원이 넘쳐도 그대로 배치). 같은 교시에 다른 과목이 쓰는 교실은 고를 수 없습니다.<br><b>자습 좌석</b>은 기본이 <b>다음 시험 좌석 그대로</b>입니다(예: 2교시 자습 → 3교시 법과 사회 시험실·좌석에 미리 앉음). 그 교실을 이 교시 시험이 쓰거나 자리가 겹치는 학생만 고른 자습 교실에 학번순으로 앉습니다. 모두 학번순으로 하려면 <b>학번순으로 새로 배치</b>를 고르세요.</div></div>
   ${!keys.length ? '<div class="warnbox">이 학년은 아직 고사 시간표가 없습니다. <b>시험 시간표 작성</b>에서 시간표를 확정하세요.</div>' : `
   <div class="card"><div class="row" style="align-items:flex-end">
       <label class="f grow">쓸 수 있는 시험실 (쉼표로 구분 · 이 순서로 버튼이 나옴)<input type="text" value="${esc(o.rooms.join(', '))}" data-plo="rooms"></label>
@@ -3731,8 +3787,9 @@ A['pl-room'] = b => {
 };
 A['plo-build'] = async () => {
   const g = +St.ui.place.g, o = St.ui.place.o, st = St.docs['assign:' + g];
-  const empty = sortedSlotKeys(slotsOf(g)).filter(k => !placeIsCommon(g, k) && (o.modes[k] || 'split') === 'split').flatMap(k => Object.entries(placeSubOf(g, k, o)).filter(([sub, rs]) => !(rs || []).length && placeCount(g, sub)).map(([sub]) => `${slotLabel(k)} ${sub}`));
-  if (empty.length) return toast('교실을 고르지 않은 과목이 있습니다: ' + empty.join(', '), true);
+  const empty = sortedSlotKeys(slotsOf(g)).filter(k => !placeIsCommon(g, k) && (o.modes[k] || 'split') === 'split').flatMap(k => [...Object.entries(placeSubOf(g, k, o)).filter(([sub, rs]) => sub !== Core.STUDY && !(rs || []).length && placeCount(g, sub)).map(([sub]) => `${slotLabel(k)} ${sub}`),
+    ...(placeStudyCount(g, k) && !((placeSubOf(g, k, o)[Core.STUDY]) || []).length ? [`${slotLabel(k)} 자습`] : [])]);
+  if (empty.length) return toast('교실을 고르지 않은 과목·자습이 있습니다: ' + empty.join(', '), true);
   if (st && st.source === 'file' && !await confirmBox('엑셀 파일로 반영한 시험실·좌석 배치를 새 배치로 바꿀까요?', { danger: true, ok: '바꾸기' })) return;
   try { const r = await busy('배치 만드는 중', () => placeBuildSave(g, o)); toast('시험실·좌석 배치를 저장했습니다'); r.notes.forEach(n => toast(n, true)); render(); }
   catch (e) { toast(e.message, true); }
@@ -3742,6 +3799,7 @@ document.addEventListener('change', e => {
   const o = St.ui.place.o, t = el.dataset.plo;
   if (t === 'rooms') { o.rooms = el.value.split(/[,，\s]+/).map(x => x.trim()).filter(Boolean); Object.values(o.sub).forEach(S => Object.keys(S).forEach(sub => S[sub] = (S[sub] || []).filter(r => o.rooms.includes(r)))); }
   else if (t === 'mode') o.modes[el.dataset.k] = el.value;
+  else if (t === 'smode') (o.studyMode || (o.studyMode = {}))[el.dataset.k] = el.value;
   render();
 });
 
@@ -3769,15 +3827,24 @@ function burdenData(g) {
     const dayNums = [...new Set(Object.keys(sl).map(k => Core.parseSlotKey(k).day))].sort((a, b) => a - b);
     return dayNums.map(day => {
       const keys = Object.keys(sl).filter(k => Core.parseSlotKey(k).day === day).sort((a, b) => Core.parseSlotKey(a).period - Core.parseSlotKey(b).period);
-      const zero = [], c3 = [], c4 = [];
+      const maxP = Math.max(...keys.map(k => Core.parseSlotKey(k).period));
+      const zero = [], c3 = [], c4 = [], last = [], gaps = new Map();
       studs.forEach(s => {
         const ex = [];
         keys.forEach(k => { const sub = (sl[k] || []).find(x => x !== Core.STUDY && sets[x] && sets[x].has(s.id)); if (sub) ex.push({ p: Core.parseSlotKey(k).period, sub }); });
         let run = 0, best = 0, prev = -9; ex.forEach(x => { run = x.p === prev + 1 ? run + 1 : 1; prev = x.p; best = Math.max(best, run); });
         const e = { s, ex };
-        if (!ex.length) zero.push(e); else if (best >= 4) c4.push(e); else if (best === 3) c3.push(e);
+        if (!ex.length) { zero.push(e); return; }
+        if (best >= 4) c4.push(e); else if (best === 3) c3.push(e);
+        // 중간에 빈 교시(자습)가 있는 학생: 응시 교시 모양별로 묶음 (예: 1·4교시 → 2·3교시 자습)
+        const ps = ex.map(x => x.p), hole = []; for (let p = ps[0]; p <= ps[ps.length - 1]; p++) if (!ps.includes(p)) hole.push(p);
+        if (hole.length) { const key = ps.join('·') + '|' + hole.join('·'); if (!gaps.has(key)) gaps.set(key, []); gaps.get(key).push(e); }
+        if (maxP > 1 && ps.length === 1 && ps[0] === maxP) last.push(e);
       });
-      return { day, zero, c3, c4 };
+      const gapCats = [...gaps.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0])).map(([key, list]) => { const [ps, hole] = key.split('|'); return { t: `${ps}교시만 응시 (${hole}교시 자습)`, list, cls: 'warn' }; });
+      const cats = [{ t: '4과목 이상 연속 응시', list: c4, cls: 'bad' }, { t: '3과목 연속 응시', list: c3, cls: 'warn' }, ...gapCats,
+        ...(maxP > 1 ? [{ t: `마지막 교시(${maxP}교시)만 응시`, list: last, cls: '' }] : []), { t: '0과목 (그날 시험 없음)', list: zero, cls: '' }];
+      return { day, maxP, zero, c3, c4, last, gapN: gapCats.reduce((a, c) => a + c.list.length, 0), cats };
     });
   });
 }
@@ -3787,32 +3854,40 @@ function sxList(v) {
   const sl = slotsOf(g);
   const head = `<div class="card"><div class="row"><h3 style="margin:0">학생별 응시 부담 명단</h3>${gs.map(x => `<button class="btn sm ${x === g ? 'pri' : ''}" data-act="sx-g" data-g="${x}">${x}학년</button>`).join('')}
     <span class="right"></span>${Object.keys(sl).length ? '<button class="btn" data-act="bd-xlsx">엑셀 다운로드</button>' : ''}</div>
-    <div class="help" style="margin-top:10px"><b>확정된 고사 시간표</b> 기준입니다. 날짜별로 <b>시험이 없는(0과목) 학생</b>, <b>3과목을 연속으로</b> 보는 학생, <b>4과목 이상을 연속으로</b> 보는 학생을 보여 줍니다. (자습 교시는 응시로 세지 않습니다)</div></div>`;
+    <div class="help" style="margin-top:10px"><b>확정된 고사 시간표</b> 기준입니다. 날짜별로 <b>4과목 이상 연속</b>, <b>3과목 연속</b>, <b>중간에 자습이 끼는 학생</b>(예: 1·4교시만 응시 → 2·3교시 자습, 응시 교시 모양별로 묶음), <b>마지막 교시만 응시</b>, <b>시험 없음(0과목)</b> 학생을 보여 줍니다. 자습 교시는 응시로 세지 않습니다.</div></div>`;
   if (!Object.keys(sl).length) return (v.innerHTML = head + '<div class="warnbox">아직 확정된 고사 시간표가 없습니다. <b>5. 가중치·조합 찾기</b>에서 시간표를 확정하세요.</div>');
   const B = burdenData(g), dl = d => `${d}일차 ${fmtDate(dateOf(d), true)}`;
   const tbl = list => `<div class="tbl-wrap"><table class="t"><thead><tr><th>학번</th><th>이름</th><th>응시 교시</th><th>과목</th></tr></thead><tbody>${list.map(({ s, ex }) => `<tr><td>${s.id}</td><td class="nowrap">${esc(s.name)}${thMark(g, s.id)}</td><td class="nowrap">${ex.map(x => x.p).join('·') || '—'}</td><td class="small">${ex.map(x => esc(x.sub)).join(', ') || '—'}</td></tr>`).join('')}</tbody></table></div>`;
-  const sec = (title, list, cls) => `<details class="bd" ${list.length && list.length <= 40 ? 'open' : ''}><summary><b>${title}</b> <span class="tag ${list.length ? cls : ''}">${list.length}명</span></summary>${list.length ? tbl(list) : '<p class="muted small">해당 학생 없음</p>'}</details>`;
-  v.innerHTML = head + `<div class="card"><table class="t"><thead><tr><th>일차</th><th class="num">0과목 (시험 없음)</th><th class="num">3과목 연속</th><th class="num">4과목 이상 연속</th></tr></thead><tbody>
-    ${B.map(x => `<tr><td>${dl(x.day)}</td><td class="num">${x.zero.length}</td><td class="num ${x.c3.length ? 'warnc' : ''}">${x.c3.length}</td><td class="num ${x.c4.length ? 'badc' : ''}">${x.c4.length}</td></tr>`).join('')}</tbody></table></div>`
-    + B.map(x => `<div class="card"><h3>${dl(x.day)}</h3>${sec('4과목 이상 연속 응시', x.c4, 'bad')}${sec('3과목 연속 응시', x.c3, 'warn')}${sec('0과목 (그날 시험 없음)', x.zero, '')}</div>`).join('');
+  const sec = c => `<details class="bd" ${c.list.length && c.list.length <= 40 ? 'open' : ''}><summary><b>${esc(c.t)}</b> <span class="tag ${c.list.length ? c.cls : ''}">${c.list.length}명</span></summary>${c.list.length ? tbl(c.list) : '<p class="muted small">해당 학생 없음</p>'}</details>`;
+  v.innerHTML = head + `<div class="card"><table class="t"><thead><tr><th>일차</th><th class="num">4과목 이상 연속</th><th class="num">3과목 연속</th><th class="num">중간 자습</th><th class="num">마지막 교시만</th><th class="num">0과목 (시험 없음)</th></tr></thead><tbody>
+    ${B.map(x => `<tr><td>${dl(x.day)}</td><td class="num ${x.c4.length ? 'badc' : ''}">${x.c4.length}</td><td class="num ${x.c3.length ? 'warnc' : ''}">${x.c3.length}</td><td class="num ${x.gapN ? 'warnc' : ''}">${x.gapN}</td><td class="num">${x.maxP > 1 ? x.last.length : '—'}</td><td class="num">${x.zero.length}</td></tr>`).join('')}</tbody></table></div>`
+    + B.map(x => `<div class="card"><h3>${dl(x.day)} <span class="small muted">(${x.maxP}교시까지)</span></h3>${x.cats.filter(c => c.list.length || !/교시만 응시 \(/.test(c.t)).map(sec).join('')}</div>`).join('');
 }
 A['bd-xlsx'] = () => withExcel('엑셀 만드는 중', async () => {
   const g = +St.ui.sx.g, B = burdenData(g), wb = new ExcelJS.Workbook();
-  const ws0 = wb.addWorksheet('요약'); ws0.columns = [{ width: 16 }, { width: 16 }, { width: 14 }, { width: 18 }];
-  ['일차', '0과목(시험 없음)', '3과목 연속', '4과목 이상 연속'].forEach((h, k) => xc(ws0, 1, k + 1, h, { bold: true, fill: 'FFEEEEEE' }));
-  B.forEach((x, i) => [`${x.day}일차 ${fmtDate(dateOf(x.day), true)}`, x.zero.length, x.c3.length, x.c4.length].forEach((val, k) => xc(ws0, i + 2, k + 1, val)));
+  const ws0 = wb.addWorksheet('요약'); ws0.columns = [{ width: 16 }, { width: 15 }, { width: 12 }, { width: 11 }, { width: 13 }, { width: 16 }];
+  ['일차', '4과목 이상 연속', '3과목 연속', '중간 자습', '마지막 교시만', '0과목(시험 없음)'].forEach((h, k) => xc(ws0, 1, k + 1, h, { bold: true, fill: 'FFEEEEEE' }));
+  B.forEach((x, i) => [`${x.day}일차 ${fmtDate(dateOf(x.day), true)}`, x.c4.length, x.c3.length, x.gapN, x.maxP > 1 ? x.last.length : '—', x.zero.length].forEach((val, k) => xc(ws0, i + 2, k + 1, val)));
   for (const x of B) {
-    const ws = wb.addWorksheet(xlSheetName(`${x.day}일차`)); ws.columns = [{ width: 18 }, { width: 9 }, { width: 11 }, { width: 11 }, { width: 46 }];
+    const ws = wb.addWorksheet(xlSheetName(`${x.day}일차`)); ws.columns = [{ width: 30 }, { width: 9 }, { width: 11 }, { width: 13 }, { width: 46 }];
     let r = 1;
-    for (const [t, list] of [['4과목 이상 연속 응시', x.c4], ['3과목 연속 응시', x.c3], ['0과목 (그날 시험 없음)', x.zero]]) {
-      xm(ws, r, 1, r, 5, `${x.day}일차 ${fmtDate(dateOf(x.day))} · ${t} (${list.length}명)`, { bold: true, noBorder: true, h: 'left' }); r++;
+    for (const c of x.cats) {
+      xm(ws, r, 1, r, 5, `${x.day}일차 ${fmtDate(dateOf(x.day))} · ${c.t} (${c.list.length}명)`, { bold: true, noBorder: true, h: 'left' }); r++;
       ['구분', '학번', '이름', '응시 교시', '과목'].forEach((h, k) => xc(ws, r, k + 1, h, { bold: true, fill: 'FFEEEEEE' })); r++;
-      list.forEach(({ s, ex }) => { [t, s.id, s.name, ex.map(e => e.p + '교시').join(', ') || '—', ex.map(e => e.sub).join(', ') || '—'].forEach((val, k) => xc(ws, r, k + 1, val, k === 4 ? { h: 'left' } : {})); r++; });
+      c.list.forEach(({ s, ex }) => { [c.t, s.id, s.name, ex.map(e => e.p + '교시').join(', ') || '—', ex.map(e => e.sub).join(', ') || '—'].forEach((val, k) => xc(ws, r, k + 1, val, k === 4 || k === 0 ? { h: 'left' } : {})); r++; });
       r++;
     }
   }
   await xlSave(wb, `${g}학년_응시부담명단.xlsx`);
 });
+
+// 화면 미리보기용 계산 (옵션이 같으면 다시 계산하지 않음)
+let placePrevKey = '', placePrevVal = null;
+function placePreview(g, o) {
+  const key = g + JSON.stringify([o.rooms, o.modes, o.sub, o.studyMode, St.vers['grade:' + g], St.vers.plan]);
+  if (key !== placePrevKey) { placePrevKey = key; placePrevVal = placeCompute(g, clone(o)); }
+  return placePrevVal;
+}
 
 </script>
 </body>
