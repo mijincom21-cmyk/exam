@@ -365,6 +365,8 @@ table.mla tfoot th{background:#f3f3f3}
 table.ml2 td.att{cursor:pointer;color:var(--sub);font-size:11.5px;user-select:none}
 table.ml2 td.att:hover{background:var(--line2)}
 table.ml2 td.att.on{background:var(--ok-soft);color:var(--ok);font-weight:700;font-size:13px}
+.pl-step{display:inline-flex;align-items:center;gap:4px;margin-left:6px}
+.pl-step b{min-width:34px;text-align:center}
 
 </style>
 </head>
@@ -3611,7 +3613,7 @@ A['sx-final'] = async b => {
   c.dpu.forEach((row, d) => row.forEach((u, p) => { if (u != null) slots[Core.slotKey(R.dd[d].day, p + 1)] = R.units[u].subjects.slice(); }));
   const had = St.docs['assign:' + g];
   const box = await modal('시험 시간표 확정', `<p><b>${g}학년</b> 고사 시간표를 이 조합으로 저장합니다.</p>
-    <label class="chk"><input type="checkbox" id="sxf-place" checked> 시험실·좌석도 추천값으로 바로 배치 (공통과목 = 자기 반 번호순, 선택과목 = 학급 평균 인원에 맞춘 반 수로 학번순 · 나중에 과목별 교실 조정 가능)</label>
+    <label class="chk"><input type="checkbox" id="sxf-place" ${had && had.source === 'file' ? '' : 'checked'}> 시험실·좌석도 추천값으로 바로 배치 (공통과목 = 자기 반 번호순, 선택과목 = 학급 평균 인원에 맞춘 반 수로 학번순 · 나중에 과목별 교실 조정 가능)</label>
     ${had ? `<p class="small" style="color:var(--warn)">※ 이미 저장된 시험실·좌석 배치${had.source === 'file' ? '(엑셀 파일로 반영)' : ''}가 있습니다. 체크하면 새로 만든 배치로 바뀝니다.</p>` : ''}
     <p class="small muted">확정 후에도 <b>6. 시간표 확인·직접 편집</b>과 <b>시험실·좌석 배치</b>에서 고칠 수 있습니다.</p>`, { ok: '확정' });
   if (!box) return;
@@ -3726,7 +3728,9 @@ function placeFollow(g, slots, o) {
       used.add(`${room}|${seat}`); moved.set(sid, [room, seat]); cnt++;
     });
     sl.rows.forEach(r => { if (r[1] === '자습' && moved.has(r[0])) { const [rm, st] = moved.get(r[0]); r[2] = rm; r[3] = st; } });
-    info[k] = { follow: study.length - left.length, left: left.length };
+    // 따라 앉은 교실의 빈 좌석 = 이 교시에 다른 시험을 보러 간 학생 자리(다음 교시에 돌아옴)
+    const byRoom = {}; moved.forEach(([rm, st], sid) => { if (!left.includes(sid)) { const x = byRoom[rm] || (byRoom[rm] = { n: 0, max: 0 }); x.n++; x.max = Math.max(x.max, st); } });
+    info[k] = { follow: study.length - left.length, left: left.length, empty: Object.values(byRoom).reduce((a, x) => a + x.max - x.n, 0) };
   }
   return info;
 }
@@ -3744,9 +3748,10 @@ function placeSlotHtml(g, k, o) {
       const nums = fol && pv ? rs.map(r => pv.rows.filter(x => x[1] === '자습' && x[2] === r).length) : splitNums(n, rs.length), mx = Math.max(0, ...nums);
       const rec = placeRecs(g, Math.max(1, n));
       return `<div class="pl-sub ${isS ? 'pl-study' : ''}"><div class="row"><b>${isS ? '자습' : esc(sub)}</b><span class="tag">${isS ? `자습 ${n}명` : `응시 ${n}명`}</span>${isS ? `<select data-plo="smode" data-k="${k}" title="자습 좌석 정하는 방법"><option value="follow" ${((o.studyMode || {})[k] || 'follow') === 'follow' ? 'selected' : ''}>다음 시험 좌석 그대로</option><option value="sid" ${((o.studyMode || {})[k]) === 'sid' ? 'selected' : ''}>학번순으로 새로 배치</option></select>
-          ${((o.studyMode || {})[k] || 'follow') === 'follow' ? (() => { const f = placePreview(g, o).follow[k]; return f ? `<span class="small">다음 시험 좌석에 <b>${f.follow}명</b>${f.left ? ` · 따라갈 수 없는 <b>${f.left}명</b>은 아래 고른 교실에 학번순` : ''}</span>` : ''; })() : ''}
+          ${((o.studyMode || {})[k] || 'follow') === 'follow' ? (() => { const f = placePreview(g, o).follow[k]; return f ? `<span class="small">다음 시험 좌석에 <b>${f.follow}명</b>${f.empty ? ` (그 자리 주인이 이 교시 다른 시험 중이라 <b>빈 좌석 ${f.empty}개</b>)` : ''}${f.left ? ` · 따라갈 수 없는 <b>${f.left}명</b>은 아래 고른 교실에 학번순` : ''}</span>` : ''; })() : ''}
           <span class="small muted">(이 교시 시험이 없고 뒤 교시 시험 때문에 남는 학생 · 하교생 제외)</span>` : ''}
           <span class="small muted">반 수 추천:</span>${rec.map(r => `<button class="btn sm ${rs.length === r ? 'pri' : ''}" data-act="pl-n" data-k="${k}" data-s="${esc(sub)}" data-n="${r}">${r}반 <span class="tiny">(${rangeTxt(splitNums(n, r))})</span></button>`).join('')}
+          <span class="pl-step"><button class="btn sm" data-act="pl-step" data-k="${k}" data-s="${esc(sub)}" data-d="-1" ${rs.length <= 1 ? 'disabled' : ''} title="반 수 줄이기 (한 반 인원 늘어남)">−</button><b>${rs.length}반</b><button class="btn sm" data-act="pl-step" data-k="${k}" data-s="${esc(sub)}" data-d="1" title="반 수 늘리기">+</button></span>
           <span class="right"></span>${rs.length ? `<span class="tag ${mx > PLACE_MAX ? 'bad' : mx > avg ? 'warn' : 'ok'}">${rs.length}개 반 · ${nums.join('·')}명${mx > PLACE_MAX ? ` · ${PLACE_MAX}명 초과` : ''}</span>` : '<span class="tag bad">교실을 고르세요</span>'}</div>
         <div class="pl-rooms">${o.rooms.map(r => { const ow = owner[r], mine = ow === sub;
           return `<button class="pl-room ${mine ? 'on' : ''} ${ow && !mine ? 'taken' : ''}" data-act="pl-room" data-k="${k}" data-s="${esc(sub)}" data-r="${esc(r)}" ${ow && !mine ? `disabled title="${esc(ow)} 사용 중"` : ''}>${esc(roomShort(r))}${mine ? `<span class="tiny">${nums[rs.indexOf(r)]}명</span>` : ow ? `<span class="tiny">${esc(ow.slice(0, 4))}</span>` : ''}</button>`; }).join('')}</div></div>`; }).join('')}
@@ -3757,9 +3762,17 @@ function sPlace(v) {
   const u = St.ui.place || (St.ui.place = {}); ensure(u, 'g', gs.map(String)); const g = +u.g, sl = slotsOf(g), keys = sortedSlotKeys(sl);
   if (!u.o || u.o.g !== g) u.o = Object.assign(clone(placeOpts(g)), { g });
   const o = u.o, st = St.docs['assign:' + g];
+  if (st && st.source === 'file' && !(u.unlock || {})[g]) {
+    v.innerHTML = `<div class="card"><div class="row"><h3 style="margin:0">시험실·좌석 배치 만들기</h3>${gs.map(x => `<button class="btn sm ${x === g ? 'pri' : ''}" data-act="pl-g" data-g="${x}">${x}학년</button>`).join('')}</div>
+      <div class="okbox" style="margin-top:10px">🔒 <b>${g}학년은 엑셀 파일(${esc(st.fileName || '')})로 반영된 배치</b>를 쓰고 있습니다. 시험실·좌석·자습 배치와 교실 좌석 기본값 모두 <b>파일 내용 그대로</b>이므로 여기서 새로 만들 필요가 없습니다.
+        <br>일부만 고칠 때는 <b>2. 시험실 직접 고치기</b>를 이용하세요.</div>
+      <div class="row" style="margin-top:10px"><button class="btn sm bad" data-act="pl-unlock">파일 배치를 버리고 여기서 새로 만들기</button><span class="small muted">누르기만 해서는 바뀌지 않고, 새로 만든 뒤 [배치 만들기 · 저장]을 눌러야 바뀝니다.</span></div></div>
+    <div class="card"><h3>현재 배치 (파일)</h3>${statusPanel(g)}</div>`;
+    return;
+  }
   const com = keys.filter(k => placeIsCommon(g, k)), sel = keys.filter(k => !placeIsCommon(g, k));
   v.innerHTML = `<div class="card"><div class="row"><h3 style="margin:0">시험실·좌석 배치 만들기</h3>${gs.map(x => `<button class="btn sm ${x === g ? 'pri' : ''}" data-act="pl-g" data-g="${x}">${x}학년</button>`).join('')}<span class="right tag">학급 평균 재적 ${placeAvg(g)}명</span></div>
-    <div class="help" style="margin-top:10px"><b>공통과목</b>은 자기 반 교실에서 번호순으로 앉습니다. <b>선택과목</b>과 <b>자습</b>(그 교시 시험이 없고 뒤 교시 시험 때문에 남는 학생)은 각각 <b>몇 개 반으로 나눌지</b> 고르고(추천 버튼), <b>쓸 교실</b>을 눌러 정하세요. 학번이 빠른 순서대로 고른 교실에 고르게 나눠 앉습니다(인원이 넘쳐도 그대로 배치). 같은 교시에 다른 과목이 쓰는 교실은 고를 수 없습니다.<br><b>자습 좌석</b>은 기본이 <b>다음 시험 좌석 그대로</b>입니다(예: 2교시 자습 → 3교시 법과 사회 시험실·좌석에 미리 앉음). 그 교실을 이 교시 시험이 쓰거나 자리가 겹치는 학생만 고른 자습 교실에 학번순으로 앉습니다. 모두 학번순으로 하려면 <b>학번순으로 새로 배치</b>를 고르세요.</div></div>
+    <div class="help" style="margin-top:10px"><b>공통과목</b>은 자기 반 교실에서 번호순으로 앉습니다. <b>선택과목</b>과 <b>자습</b>(그 교시 시험이 없고 뒤 교시 시험 때문에 남는 학생)은 각각 <b>몇 개 반으로 나눌지</b> 고르고(추천 버튼), <b>쓸 교실</b>을 눌러 정하세요. 추천에 없는 반 수(예: 한 반 38명이 넘더라도 반 수를 줄이고 싶을 때)는 <b>− / +</b> 버튼으로 바꿉니다. 학번이 빠른 순서대로 고른 교실에 고르게 나눠 앉습니다(인원이 넘쳐도 그대로 배치). 같은 교시에 다른 과목이 쓰는 교실은 고를 수 없습니다.<br><b>자습 좌석</b>은 기본이 <b>다음 시험 좌석 그대로</b>입니다(예: 2교시 자습 → 3교시 법과 사회 시험실·좌석에 미리 앉음). 그 교실을 이 교시 시험이 쓰거나 자리가 겹치는 학생만 고른 자습 교실에 학번순으로 앉습니다. 모두 학번순으로 하려면 <b>학번순으로 새로 배치</b>를 고르세요.</div></div>
   ${!keys.length ? '<div class="warnbox">이 학년은 아직 고사 시간표가 없습니다. <b>시험 시간표 작성</b>에서 시간표를 확정하세요.</div>' : `
   <div class="card"><div class="row" style="align-items:flex-end">
       <label class="f grow">쓸 수 있는 시험실 (쉼표로 구분 · 이 순서로 버튼이 나옴)<input type="text" value="${esc(o.rooms.join(', '))}" data-plo="rooms"></label>
@@ -3771,6 +3784,10 @@ function sPlace(v) {
   <div class="card"><h3>배치 결과</h3>${statusPanel(g)}<p class="small muted">교실별 좌석 모양(열별 인원)은 <b>3. 교실 좌석</b>, 일부 학생의 시험실을 바꾸려면 <b>2. 시험실 직접 고치기</b>를 이용하세요.</p></div>`}`;
 }
 A['pl-g'] = b => { St.ui.place.g = b.dataset.g; render(); };
+A['pl-unlock'] = async () => {
+  if (!await confirmBox('엑셀 파일로 반영한 배치 대신 여기서 새로 만들까요?\n(아직 바뀌지 않습니다. 설정 후 [배치 만들기 · 저장]을 눌러야 파일 배치가 새 배치로 바뀝니다)', { ok: '새로 만들기', danger: true })) return;
+  const u = St.ui.place; (u.unlock || (u.unlock = {}))[u.g] = true; render();
+};
 A['plo-reset'] = () => { const g = +St.ui.place.g; St.ui.place.o.rooms = Core.classRooms(GD(g)); render(); };
 A['plo-auto'] = () => { St.ui.place.o.sub = {}; render(); };
 // 반 수 추천 버튼: 이미 고른 교실은 유지하고 모자라면 비어 있는 교실을 앞에서부터 더함
@@ -3779,6 +3796,13 @@ A['pl-n'] = b => {
   const taken = new Set(Object.entries(S).filter(([x]) => x !== sub).flatMap(([, rs]) => rs || []));
   let rs = (S[sub] || []).slice(0, n);
   for (const r of o.rooms) { if (rs.length >= n) break; if (!taken.has(r) && !rs.includes(r)) rs.push(r); }
+  S[sub] = o.rooms.filter(r => rs.includes(r)); render();
+};
+// − / + : 추천과 관계없이 반 수를 직접 조절 (38명이 넘어도 가능). 줄이면 마지막 교실을 빼고, 늘리면 비어 있는 교실을 앞에서부터 더함
+A['pl-step'] = b => {
+  const g = +St.ui.place.g, o = St.ui.place.o, k = b.dataset.k, sub = b.dataset.s, S = placeSubOf(g, k, o), rs = (S[sub] || []).slice();
+  if (+b.dataset.d < 0) { if (rs.length > 1) rs.pop(); }
+  else { const taken = new Set(Object.entries(S).filter(([x]) => x !== sub).flatMap(([, r]) => r || [])); const add = o.rooms.find(r => !taken.has(r) && !rs.includes(r)); if (!add) return toast('더 쓸 수 있는 빈 교실이 없습니다. 위 "쓸 수 있는 시험실"에 교실을 추가하세요', true); rs.push(add); }
   S[sub] = o.rooms.filter(r => rs.includes(r)); render();
 };
 A['pl-room'] = b => {
