@@ -3859,14 +3859,17 @@ function burdenData(g) {
         let run = 0, best = 0, prev = -9; ex.forEach(x => { run = x.p === prev + 1 ? run + 1 : 1; prev = x.p; best = Math.max(best, run); });
         const e = { s, ex };
         if (!ex.length) { zero.push(e); return; }
-        if (best >= 4) c4.push(e); else if (best === 3) c3.push(e);
+        // 연속 여부와 관계없이 그날 응시 과목 수로 구분
+        if (ex.length >= 4) c4.push(e); else if (ex.length === 3) c3.push(e);
         // 중간에 빈 교시(자습)가 있는 학생: 응시 교시 모양별로 묶음 (예: 1·4교시 → 2·3교시 자습)
-        const ps = ex.map(x => x.p), hole = []; for (let p = ps[0]; p <= ps[ps.length - 1]; p++) if (!ps.includes(p)) hole.push(p);
-        if (hole.length) { const key = ps.join('·') + '|' + hole.join('·'); if (!gaps.has(key)) gaps.set(key, []); gaps.get(key).push(e); }
+        // 그날 맨 처음(1교시)과 맨 마지막 교시만 응시하고 그 사이는 모두 자습인 학생
+        const ps = ex.map(x => x.p);
+        if (maxP >= 3 && ps.length === 2 && ps[0] === 1 && ps[1] === maxP) { const key = 'fl'; if (!gaps.has(key)) gaps.set(key, []); gaps.get(key).push(e); }
         if (maxP > 1 && ps.length === 1 && ps[0] === maxP) last.push(e);
       });
-      const gapCats = [...gaps.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0])).map(([key, list]) => { const [ps, hole] = key.split('|'); return { t: `${ps}교시만 응시 (${hole}교시 자습)`, list, cls: 'warn' }; });
-      const cats = [{ t: '4과목 이상 연속 응시', list: c4, cls: 'bad' }, { t: '3과목 연속 응시', list: c3, cls: 'warn' }, ...gapCats,
+      const mid = Array.from({ length: Math.max(0, maxP - 2) }, (_, i) => i + 2).join('·');
+      const gapCats = maxP >= 3 ? [{ t: `1·${maxP}교시만 응시 (${mid}교시 자습)`, list: gaps.get('fl') || [], cls: 'warn' }] : [];
+      const cats = [{ t: '하루 4과목 이상 응시', list: c4, cls: 'bad' }, { t: '하루 3과목 응시', list: c3, cls: 'warn' }, ...gapCats,
         ...(maxP > 1 ? [{ t: `마지막 교시(${maxP}교시)만 응시`, list: last, cls: '' }] : []), { t: '0과목 (그날 시험 없음)', list: zero, cls: '' }];
       return { day, maxP, zero, c3, c4, last, gapN: gapCats.reduce((a, c) => a + c.list.length, 0), cats };
     });
@@ -3878,19 +3881,19 @@ function sxList(v) {
   const sl = slotsOf(g);
   const head = `<div class="card"><div class="row"><h3 style="margin:0">학생별 응시 부담 명단</h3>${gs.map(x => `<button class="btn sm ${x === g ? 'pri' : ''}" data-act="sx-g" data-g="${x}">${x}학년</button>`).join('')}
     <span class="right"></span>${Object.keys(sl).length ? '<button class="btn" data-act="bd-xlsx">엑셀 다운로드</button>' : ''}</div>
-    <div class="help" style="margin-top:10px"><b>확정된 고사 시간표</b> 기준입니다. 날짜별로 <b>4과목 이상 연속</b>, <b>3과목 연속</b>, <b>중간에 자습이 끼는 학생</b>(예: 1·4교시만 응시 → 2·3교시 자습, 응시 교시 모양별로 묶음), <b>마지막 교시만 응시</b>, <b>시험 없음(0과목)</b> 학생을 보여 줍니다. 자습 교시는 응시로 세지 않습니다.</div></div>`;
+    <div class="help" style="margin-top:10px"><b>확정된 고사 시간표</b> 기준입니다. 날짜별로 <b>하루 4과목 이상 응시</b>, <b>하루 3과목 응시</b>(연속 여부 관계없이 과목 수), <b>맨 처음·맨 마지막 교시만 응시하는 학생</b>(예: 1·4교시만 응시 → 2·3교시 자습), <b>마지막 교시만 응시</b>, <b>시험 없음(0과목)</b> 학생을 보여 줍니다. 자습 교시는 응시로 세지 않습니다.</div></div>`;
   if (!Object.keys(sl).length) return (v.innerHTML = head + '<div class="warnbox">아직 확정된 고사 시간표가 없습니다. <b>5. 가중치·조합 찾기</b>에서 시간표를 확정하세요.</div>');
   const B = burdenData(g), dl = d => `${d}일차 ${fmtDate(dateOf(d), true)}`;
   const tbl = list => `<div class="tbl-wrap"><table class="t"><thead><tr><th>학번</th><th>이름</th><th>응시 교시</th><th>과목</th></tr></thead><tbody>${list.map(({ s, ex }) => `<tr><td>${s.id}</td><td class="nowrap">${esc(s.name)}${thMark(g, s.id)}</td><td class="nowrap">${ex.map(x => x.p).join('·') || '—'}</td><td class="small">${ex.map(x => esc(x.sub)).join(', ') || '—'}</td></tr>`).join('')}</tbody></table></div>`;
   const sec = c => `<details class="bd" ${c.list.length && c.list.length <= 40 ? 'open' : ''}><summary><b>${esc(c.t)}</b> <span class="tag ${c.list.length ? c.cls : ''}">${c.list.length}명</span></summary>${c.list.length ? tbl(c.list) : '<p class="muted small">해당 학생 없음</p>'}</details>`;
-  v.innerHTML = head + `<div class="card"><table class="t"><thead><tr><th>일차</th><th class="num">4과목 이상 연속</th><th class="num">3과목 연속</th><th class="num">중간 자습</th><th class="num">마지막 교시만</th><th class="num">0과목 (시험 없음)</th></tr></thead><tbody>
+  v.innerHTML = head + `<div class="card"><table class="t"><thead><tr><th>일차</th><th class="num">4과목 이상</th><th class="num">3과목</th><th class="num">처음·마지막 교시만</th><th class="num">마지막 교시만</th><th class="num">0과목 (시험 없음)</th></tr></thead><tbody>
     ${B.map(x => `<tr><td>${dl(x.day)}</td><td class="num ${x.c4.length ? 'badc' : ''}">${x.c4.length}</td><td class="num ${x.c3.length ? 'warnc' : ''}">${x.c3.length}</td><td class="num ${x.gapN ? 'warnc' : ''}">${x.gapN}</td><td class="num">${x.maxP > 1 ? x.last.length : '—'}</td><td class="num">${x.zero.length}</td></tr>`).join('')}</tbody></table></div>`
-    + B.map(x => `<div class="card"><h3>${dl(x.day)} <span class="small muted">(${x.maxP}교시까지)</span></h3>${x.cats.filter(c => c.list.length || !/교시만 응시 \(/.test(c.t)).map(sec).join('')}</div>`).join('');
+    + B.map(x => `<div class="card"><h3>${dl(x.day)} <span class="small muted">(${x.maxP}교시까지)</span></h3>${x.cats.map(sec).join('')}</div>`).join('');
 }
 A['bd-xlsx'] = () => withExcel('엑셀 만드는 중', async () => {
   const g = +St.ui.sx.g, B = burdenData(g), wb = new ExcelJS.Workbook();
   const ws0 = wb.addWorksheet('요약'); ws0.columns = [{ width: 16 }, { width: 15 }, { width: 12 }, { width: 11 }, { width: 13 }, { width: 16 }];
-  ['일차', '4과목 이상 연속', '3과목 연속', '중간 자습', '마지막 교시만', '0과목(시험 없음)'].forEach((h, k) => xc(ws0, 1, k + 1, h, { bold: true, fill: 'FFEEEEEE' }));
+  ['일차', '4과목 이상 응시', '3과목 응시', '처음·마지막 교시만', '마지막 교시만', '0과목(시험 없음)'].forEach((h, k) => xc(ws0, 1, k + 1, h, { bold: true, fill: 'FFEEEEEE' }));
   B.forEach((x, i) => [`${x.day}일차 ${fmtDate(dateOf(x.day), true)}`, x.c4.length, x.c3.length, x.gapN, x.maxP > 1 ? x.last.length : '—', x.zero.length].forEach((val, k) => xc(ws0, i + 2, k + 1, val)));
   for (const x of B) {
     const ws = wb.addWorksheet(xlSheetName(`${x.day}일차`)); ws.columns = [{ width: 30 }, { width: 9 }, { width: 11 }, { width: 13 }, { width: 46 }];
