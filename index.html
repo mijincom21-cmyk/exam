@@ -360,6 +360,11 @@ details.bd summary{cursor:pointer}
 .pl-room .tiny{font-weight:400}
 .pl-room.on{background:var(--pri);border-color:var(--pri);color:#fff}
 .pl-room.taken{background:var(--line2);color:var(--sub);cursor:not-allowed}
+table.mla td{height:auto;padding:3px 4px}
+table.mla tfoot th{background:#f3f3f3}
+table.ml2 td.att{cursor:pointer;color:var(--sub);font-size:11.5px;user-select:none}
+table.ml2 td.att:hover{background:var(--line2)}
+table.ml2 td.att.on{background:var(--ok-soft);color:var(--ok);font-weight:700;font-size:13px}
 
 </style>
 </head>
@@ -1094,7 +1099,7 @@ async function enterSchool(code) {
     onMsg: m => {
       if (m.t === 'doc') checkVersions();
       if (m.t === 'abs' && m.date) { delete St.abs[m.date]; if (['hq', 'abs', 'seat'].includes(curView())) render(); }
-      if (m.t === 'meal') { St.meals = null; if (curView() === 'meal') render(); }
+      if (m.t === 'meal') { St.meals = null; if (['meal', 'matt'].includes(curView())) render(); }
     },
     onPresence: n => { St.presence = n; hdr(); },
     onStatus: ok => { St.online = ok; hdr(); },
@@ -1159,7 +1164,7 @@ function hdr() {
 const TABS = [['ht', '담임교사'], ['sv', '감독교사'], ['hq', '고사본부'], ['admin', '설정(고사 담당자)']];
 const MINIS = {
   ht: [['abs', '결시 입력'], ['meal', '급식 신청'], ['cb', '반별 배정표'], ['pt', '개인 시간표']],
-  sv: [['abs', '결시 입력'], ['seat', '자리배치표']],
+  sv: [['abs', '결시 입력'], ['seat', '자리배치표'], ['matt', '급식 출석부']],
   hq: [['hq', '결시 확인'], ['meal', '급식 신청 확인'], ['seat', '자리배치표'], ['cb', '반별 배정표']],
 };
 // 지금 보이는 화면 키 (abs·meal·hq·seat·cb·pt·admin)
@@ -1182,7 +1187,7 @@ function render() {
     v = $('#pane');
   }
   try {
-    ({ abs: vAbs, meal: vMeal, hq: vHq, seat: vSeat, cb: vCb, pt: vPt, admin: vAdmin })[view](v);
+    ({ abs: vAbs, meal: vMeal, matt: vMealAtt, hq: vHq, seat: vSeat, cb: vCb, pt: vPt, admin: vAdmin })[view](v);
   } catch (e) { console.error(e); v.innerHTML = `<div class="errbox">화면을 그리는 중 오류가 발생했습니다: ${esc(e.message)}</div>`; }
 }
 function needSetup(v, what) {
@@ -3055,27 +3060,59 @@ function mealData(date, day, gsel) {
     .map(gr => Object.assign({}, gr, { list: list.filter(x => x.ep === gr.k) })).filter(gr => gr.list.length || (gr.k >= 1 && gr.k <= 3));
   return { G, list, groups };
 }
-function mealTwoUp(list) {
-  const h = Math.ceil(list.length / 2), cell = (x, i) => x ? `<td>${i + 1}</td><td>${x.sid}</td><td>${esc(x.name)}</td><td></td>` : '<td></td><td></td><td></td><td></td>';
+// 급식 출석 체크: 별도 표 없이 제출 기록(submissions)에 'MA:학번'·0교시로 저장 → SQL 변경 없음
+const mealAtt = date => new Set((St.subs[date] || []).filter(x => x.period == 0 && String(x.unit).startsWith('MA:')).map(x => +String(x.unit).slice(3)));
+function mealTwoUp(list, date, live) {
+  const att = mealAtt(date), h = Math.ceil(list.length / 2);
+  const cell = (x, i) => { if (!x) return '<td></td><td></td><td></td><td></td>'; const on = att.has(x.sid);
+    return `<td>${i + 1}</td><td>${x.sid}</td><td>${esc(x.name)}</td>${live ? `<td class="att ${on ? 'on' : ''}" data-act="meal-att" data-date="${date}" data-sid="${x.sid}">${on ? '✓ 출석' : '미확인'}</td>` : `<td>${on ? '✓' : ''}</td>`}`; };
   const head = '<th style="width:7%">연번</th><th style="width:13%">학번</th><th style="width:17%">이름</th><th style="width:11%">출석</th>';
   return `<table class="ml2"><thead><tr>${head}<th class="gap"></th>${head}</tr></thead><tbody>${Array.from({ length: h }, (_, i) => `<tr>${cell(list[i], i)}<td class="gap"></td>${cell(list[i + h], i + h)}</tr>`).join('')}</tbody></table>`;
 }
 function mealRosterHtml(date, day, gsel, onlyWait, print) {
-  const { list, groups } = mealData(date, day, gsel), t = esc(P().title || '정기고사');
+  const { list, groups } = mealData(date, day, gsel), t = esc(P().title || '정기고사'), att = mealAtt(date), live = !print;
   const gl = gsel === 'all' ? '전체 학년' : gsel + '학년';
   const n3 = list.filter(x => mealTime(x.ep) === 3).length, n4 = list.length - n3;
-  const gg = groups.filter(gr => !onlyWait || gr.wait);
+  const gg = groups.filter(gr => !onlyWait || gr.wait), shown = gg.flatMap(gr => gr.list), nAtt = shown.filter(x => att.has(x.sid)).length;
+  const miss = shown.filter(x => !att.has(x.sid));
   return `<div class="${print ? 'pg ml-p' : 'screen-pg pg ml-p'}">
     <h1>급식 신청자 출석부 (시청각실)</h1>
-    <div class="subt">${t} · <b>${day}일차 ${fmtDate(date)}</b> · ${gl} · 신청 <b>${list.length}명</b> (3교시 후 급식 ${n3}명 · 4교시 이후 급식 ${n4}명)</div>
-    ${gg.map(gr => `<div class="mgrp"><h4>${esc(gr.t)} <span style="font-weight:400;font-size:12px">— ${esc(gr.d)} · ${gr.list.length}명</span></h4>${gr.list.length ? mealTwoUp(gr.list) : '<div class="small" style="color:#666">해당 학생 없음</div>'}</div>`).join('')}
+    <div class="subt">${t} · <b>${day}일차 ${fmtDate(date)}</b> · ${gl} · 신청 <b>${list.length}명</b> (3교시 후 급식 ${n3}명 · 4교시 이후 급식 ${n4}명) · 출석 확인 <b>${nAtt}/${shown.length}명</b></div>
+    ${live ? `<div class="help small" style="margin:6px 0">학생의 <b>출석</b> 칸을 누르면 <b>✓ 출석 ↔ 미확인</b>이 바뀌고 바로 저장됩니다(다른 선생님 화면에도 반영). ${miss.length && miss.length <= 30 ? `<br>미확인 ${miss.length}명: ${miss.map(x => `${x.sid} ${esc(x.name)}`).join(', ')}` : ''}</div>` : ''}
+    ${gg.map(gr => `<div class="mgrp"><h4>${esc(gr.t)} <span style="font-weight:400;font-size:12px">— ${esc(gr.d)} · ${gr.list.length}명 · 출석 ${gr.list.filter(x => att.has(x.sid)).length}명</span></h4>${gr.list.length ? mealTwoUp(gr.list, date, live) : '<div class="small" style="color:#666">해당 학생 없음</div>'}</div>`).join('')}
     <div class="sign" style="margin-top:10px"><span>${esc(MEAL_WAIT_NOTE)}</span></div>
     <div class="sign"><span></span><span>2교시 감독 ____________ (인)　3교시 감독 ____________ (인)</span></div></div>`;
 }
-function vMealHq(v, modeSel) {
-  const ds = mealDays(), gs = grades(), u = St.ui.meal;
+A['meal-att'] = async b => {
+  const date = b.dataset.date, sid = +b.dataset.sid, on = !mealAtt(date).has(sid), unit = 'MA:' + sid;
+  const L = St.subs[date] || (St.subs[date] = []);
+  if (on) L.push({ date, period: 0, unit, submitted_at: nowIso() }); else St.subs[date] = L.filter(x => !(x.period == 0 && x.unit === unit));
+  render();
+  try { await rpc('mark_submission', { p_date: date, p_period: 0, p_unit: unit, p_done: on }); Api.rtSend({ t: 'meal', date }); }
+  catch (e) { toast('저장 실패: ' + e.message, true); await loadMeals(true).catch(() => { }); render(); }
+};
+// 감독교사 → 급식 출석부 (시청각실 감독용)
+function vMealAtt(v) {
+  const ds = mealDays(), gs = grades();
+  if (!ds.length || !gs.length) return needSetup(v, '고사 일정(날짜) 또는 학생 명단이 등록되지 않았습니다.');
+  if (!St.meals) { v.innerHTML = '<div class="card muted">급식 신청 내역을 불러오는 중…</div>'; loadMeals().then(render).catch(e => toast(e.message, true)); return; }
+  const u = St.ui.mealAtt || (St.ui.mealAtt = { onlyWait: true });
   ensure(u, 'day', ds.map(d => String(d.day)), String(todayDay() ?? ds[0].day));
   ensure(u, 'hg', ['all', ...gs.map(String)], 'all');
+  v.innerHTML = `<div class="card"><div class="row" style="align-items:flex-end">
+      <label class="f">날짜${selectHtml('mealAtt.day', ds.map(d => [d.day, dayLabel(d.day)]), u.day)}</label>
+      <label class="f">학년${selectHtml('mealAtt.hg', [['all', '전체'], ...gs.map(x => [x, x + '학년'])], u.hg)}</label>
+      <label class="chk"><input type="checkbox" data-bind="mealAtt.onlyWait" ${u.onlyWait ? 'checked' : ''}> 시청각실 대기 학생(1·2교시 종료)만</label>
+      <button class="btn right" data-act="meal-reload">↻ 새로고침</button></div></div>
+  ${mealRosterHtml(dateOf(+u.day), +u.day, u.hg, !!u.onlyWait, false)}`;
+  clearTimeout(mealTimer);
+  mealTimer = setTimeout(async () => { if (curView() === 'matt' && document.visibilityState === 'visible' && !$('.modal-bg')) { try { await loadMeals(true); render(); } catch (e) { } } }, 20000);
+}
+function vMealHq(v, modeSel) {
+  const ds = mealDays(), gs = grades(), u = St.ui.meal;
+  ensure(u, 'day', ['all', ...ds.map(d => String(d.day))], String(todayDay() ?? ds[0].day));
+  ensure(u, 'hg', ['all', ...gs.map(String)], 'all');
+  if (u.day === 'all') return vMealAll(v);
   const day = +u.day, date = dateOf(day);
   const { G, list, groups } = mealData(date, day, u.hg);
   const subs = St.subs[date] || [];
@@ -3087,7 +3124,7 @@ function vMealHq(v, modeSel) {
   }));
   const nDone = rows.filter(r => r.done).length;
   v.innerHTML = `<div class="card"><div class="row" style="align-items:flex-end">${modeSel}
-      <label class="f">날짜${selectHtml('meal.day', ds.map(d => [d.day, dayLabel(d.day)]), u.day)}</label>
+      <label class="f">날짜${selectHtml('meal.day', [['all', '전체 날짜 한눈에'], ...ds.map(d => [d.day, dayLabel(d.day)])], u.day)}</label>
       <label class="f">학년${selectHtml('meal.hg', [['all', '전체'], ...gs.map(x => [x, x + '학년'])], u.hg)}</label>
       <button class="btn" data-act="meal-reload">↻ 새로고침</button>
       <span class="right"></span>
@@ -3155,7 +3192,7 @@ A['meal-xlsx'] = () => withExcel('엑셀 만드는 중', async () => {
       ['연번', '학번', '이름', '출석'].forEach((h, k) => { xc(ws, rr, 1 + k, h, { bold: true, fill: 'FFEEEEEE' }); xc(ws, rr, 6 + k, h, { bold: true, fill: 'FFEEEEEE' }); }); rr++;
       const h = Math.ceil(gr.list.length / 2);
       for (let i = 0; i < h; i++, rr++) {
-        [[gr.list[i], i, 1], [gr.list[i + h], i + h, 6]].forEach(([x, n, c0]) => { xc(ws, rr, c0, x ? n + 1 : ''); xc(ws, rr, c0 + 1, x ? x.sid : ''); xc(ws, rr, c0 + 2, x ? x.name : ''); xc(ws, rr, c0 + 3, ''); });
+        [[gr.list[i], i, 1], [gr.list[i + h], i + h, 6]].forEach(([x, n, c0]) => { xc(ws, rr, c0, x ? n + 1 : ''); xc(ws, rr, c0 + 1, x ? x.sid : ''); xc(ws, rr, c0 + 2, x ? x.name : ''); xc(ws, rr, c0 + 3, x && mealAtt(d.date).has(x.sid) ? '✓' : ''); });
         ws.getRow(rr).height = 19;
       }
       rr++;
@@ -3169,6 +3206,15 @@ A['meal-xlsx'] = () => withExcel('엑셀 만드는 중', async () => {
   let rl = 2;
   for (const d of ds) for (const x of mealData(d.date, d.day, u.hg).list) { [d.date, x.g, x.cls, x.num, x.sid, x.name, endLabel(x.ep), `${mealTime(x.ep)}교시 후`].forEach((val, k) => xc(wl, rl, 1 + k, val)); rl++; }
   wl.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(1, rl - 1), column: 8 } };
+  // 4) 전체 날짜 한눈에 (학생 × 날짜)
+  const M = mealAllData(u.hg), wm = wb.addWorksheet('전체 날짜 명단'); xlSetup(wm, paper, M.ds.length > 4);
+  wm.columns = [{ width: 6 }, { width: 9 }, { width: 11 }, ...M.ds.map(() => ({ width: 13 })), { width: 6 }];
+  const ncm = 4 + M.ds.length;
+  xm(wm, 1, 1, 1, ncm, `급식 신청 명단 (전체 날짜) · ${gl} · ${M.list.length}명`, { bold: true, size: 13, noBorder: true });
+  ['연번', '학번', '이름', ...M.ds.map(d => `${d.day}일차 ${fmtDate(d.date, true)}`), '일수'].forEach((h, k) => xc(wm, 3, k + 1, h, { bold: true, fill: 'FFEEEEEE' }));
+  M.list.forEach((x, i) => { const r = 4 + i; [i + 1, x.sid, x.name, ...M.ds.map(d => x.by[d.day] === undefined ? '' : endLabel(x.by[d.day])), Object.keys(x.by).length].forEach((val, k) => xc(wm, r, k + 1, val)); });
+  const rt = 4 + M.list.length; xm(wm, rt, 1, rt, 3, '신청 인원', { bold: true, fill: 'FFF3F3F3' });
+  M.per.forEach((p, k) => xc(wm, rt, 4 + k, p.L.length, { bold: true, fill: 'FFF3F3F3' })); xc(wm, rt, ncm, '', { fill: 'FFF3F3F3' });
   await xlSave(wb, `급식신청_${gl}.xlsx`);
 });
 window.BIND_HOOKS = Object.assign(window.BIND_HOOKS || {}, { 'meal.grade': () => { St.ui.meal.cls = null; }, 'th.cls': () => { },
@@ -3262,6 +3308,40 @@ A['mv-apply'] = async () => {
   A2.updatedAt = nowIso();
   try { await saveDoc('assign:' + g, A2); toast(`${total}명을 ${u.to}로 옮겼습니다`); u.from = u.to; u.to = ''; render(); } catch (e) { toast(e.message, true); }
 };
+
+/* ---------- 고사본부: 전체 날짜·전체 학년 신청 명단 한눈에 ---------- */
+function mealAllData(hg) {
+  const ds = mealDays(), per = ds.map(d => ({ d, L: mealData(d.date, d.day, hg).list }));
+  const stu = new Map();
+  per.forEach(({ d, L }) => L.forEach(x => { if (!stu.has(x.sid)) stu.set(x.sid, { g: x.g, sid: x.sid, cls: x.cls, num: x.num, name: x.name, by: {} }); stu.get(x.sid).by[d.day] = x.ep; }));
+  return { ds, per, list: [...stu.values()].sort((a, b) => a.sid - b.sid) };
+}
+function mealAllTable(hg, print) {
+  const { ds, per, list } = mealAllData(hg), t = esc(P().title || '정기고사');
+  const cell = ep => ep === undefined ? '' : `<span class="eg${ep}">${ep ? ep + '교시 종료' : '시험 없음'}</span>${print ? '' : `<br><span class="tiny muted">${mealTime(ep)}교시 후</span>`}`;
+  return `<div class="${print ? 'pg' : 'screen-pg pg'} ml-p"><h1>급식 신청 명단 (전체 날짜)</h1>
+    <div class="subt">${t} · ${hg === 'all' ? '전체 학년' : hg + '학년'} · 신청 학생 ${list.length}명</div>
+    <table class="ml2 mla"><thead><tr><th style="width:6%">연번</th><th style="width:10%">학번</th><th style="width:14%">이름</th>${ds.map(d => `<th>${d.day}일차 ${fmtDate(d.date, true)}</th>`).join('')}<th style="width:7%">일수</th></tr></thead>
+    <tbody>${list.map((x, i) => `<tr><td>${i + 1}</td><td>${x.sid}</td><td>${esc(x.name)}</td>${ds.map(d => `<td>${cell(x.by[d.day])}</td>`).join('')}<td>${Object.keys(x.by).length}</td></tr>`).join('') || `<tr><td colspan="${4 + ds.length}">신청자가 없습니다</td></tr>`}</tbody>
+    <tfoot><tr><th colspan="3">신청 인원</th>${per.map(p => { const a = p.L.filter(x => mealTime(x.ep) === 3).length; return `<th>${p.L.length}명<br><span style="font-weight:400;font-size:11px">3교시 후 ${a} · 4교시 후 ${p.L.length - a}</span></th>`; }).join('')}<th></th></tr></tfoot></table></div>`;
+}
+function vMealAll(v) {
+  const ds = mealDays(), gs = grades(), u = St.ui.meal, { per } = mealAllData(u.hg);
+  const G = u.hg === 'all' ? gs : [+u.hg];
+  v.innerHTML = `<div class="card"><div class="row" style="align-items:flex-end">
+      <label class="f">날짜${selectHtml('meal.day', [['all', '전체 날짜 한눈에'], ...ds.map(d => [d.day, dayLabel(d.day)])], u.day)}</label>
+      <label class="f">학년${selectHtml('meal.hg', [['all', '전체'], ...gs.map(x => [x, x + '학년'])], u.hg)}</label>
+      <button class="btn" data-act="meal-reload">↻ 새로고침</button><span class="right"></span>
+      <label class="f">용지${selectHtml('meal.paper', paperOpts, u.paper || 'A4')}</label>
+      <button class="btn pri" data-act="meal-print-mat">이 명단 인쇄</button>
+      <button class="btn" data-act="meal-xlsx">엑셀 다운로드 (전체 일차)</button></div>
+    <p class="small muted" style="margin:8px 0 0">날짜를 고르면 그날의 종료 교시별 현황·시청각실 출석부를 볼 수 있습니다.</p></div>
+  <div class="card"><h3>날짜·학년별 신청 인원</h3><div class="tbl-wrap"><table class="t"><thead><tr><th>날짜</th>${G.map(g => `<th class="num">${g}학년</th>`).join('')}<th class="num">합계</th><th class="num">3교시 후 급식</th><th class="num">4교시 후 급식</th></tr></thead><tbody>
+    ${per.map(({ d, L }) => { const a = L.filter(x => mealTime(x.ep) === 3).length; return `<tr><td>${dayLabel(d.day)}</td>${G.map(g => `<td class="num">${L.filter(x => x.g === g).length || ''}</td>`).join('')}<td class="num"><b>${L.length}</b></td><td class="num">${a}</td><td class="num">${L.length - a}</td></tr>`; }).join('')}
+  </tbody></table></div></div>
+  ${mealAllTable(u.hg, false)}`;
+}
+A['meal-print-mat'] = () => { const u = St.ui.meal; printHtml(mealAllTable(u.hg, true), u.paper, 'A4'); };
 
 </script>
 <script>
